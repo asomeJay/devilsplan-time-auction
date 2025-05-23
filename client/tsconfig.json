@@ -5,8 +5,7 @@
       "lib": ["ES2020", "DOM", "DOM.Iterable"],
       "module": "ESNext",
       "skipLibCheck": true,
-      "moduleResolution": "bundler",
-      "allowImportingTsExtensions": true,
+      "moduleResolution": "node",
       "resolveJsonModule": true,
       "isolatedModules": true,
       "noEmit": true,
@@ -16,8 +15,9 @@
       "noUnusedParameters": true,
       "noFallthroughCasesInSwitch": true,
       "esModuleInterop": true,
-      "allowSyntheticDefaultImports": true
+      "allowSyntheticDefaultImports": true,
+      "types": ["vite/client"]
     },
-    "include": ["src"],
+    "include": ["src", "src/**/*"],
     "references": [{ "path": "./tsconfig.node.json" }]
   }

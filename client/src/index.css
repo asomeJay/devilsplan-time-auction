@@ -2,24 +2,145 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* 모바일 뷰포트 높이 지원 */
+:root {
+  --vh: 1vh;
 }
 
-/* Prevent pull-to-refresh on mobile */
-body {
-  overscroll-behavior-y: contain;
+@supports (height: 100dvh) {
+  :root {
+    --vh: 1dvh;
+  }
 }
 
-/* Prevent text selection on game buttons */
-.no-select {
+/* 동적 뷰포트 높이 클래스 */
+.h-screen-mobile {
+  height: 100vh; /* fallback */
+  height: calc(var(--vh, 1vh) * 100);
+  /* iOS Safari에서 flex container의 높이가 제대로 계산되도록 */
+  min-height: 100vh;
+  min-height: calc(var(--vh, 1vh) * 100);
+}
+
+@supports (height: 100dvh) {
+  .h-screen-mobile {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+}
+
+/* iOS Safari flex 레이아웃 수정 */
+.flex-container-mobile {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: calc(var(--vh, 1vh) * 100);
+  min-height: 100vh;
+  min-height: calc(var(--vh, 1vh) * 100);
+  /* iOS Safari에서 flex container 강제 높이 설정 */
+  position: relative;
+}
+
+@supports (height: 100dvh) {
+  .flex-container-mobile {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+}
+
+/* iOS Safari flex-1 대안 */
+.flex-main-mobile {
+  flex: 1 1 0%;
+  min-height: 0;
+  /* iOS Safari에서 flex item의 높이 계산 강제 */
+  height: calc(100vh - 80px); /* 헤더 높이 제외 */
+  height: calc(calc(var(--vh, 1vh) * 100) - 80px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@supports (height: 100dvh) {
+  .flex-main-mobile {
+    height: calc(100dvh - 80px);
+  }
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
   -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
   user-select: none;
+  /* iOS Safari에서 body 높이 강제 설정 */
+  height: 100vh;
+  height: calc(var(--vh, 1vh) * 100);
+  min-height: 100vh;
+  min-height: calc(var(--vh, 1vh) * 100);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+@supports (height: 100dvh) {
+  body {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+}
+
+/* iOS Safari에서 root div 높이 설정 */
+#root {
+  height: 100vh;
+  height: calc(var(--vh, 1vh) * 100);
+  min-height: 100vh;
+  min-height: calc(var(--vh, 1vh) * 100);
+  display: flex;
+  flex-direction: column;
+}
+
+@supports (height: 100dvh) {
+  #root {
+    height: 100dvh;
+    min-height: 100dvh;
+  }
+}
+
+/* 안전 영역을 위한 커스텀 클래스 */
+.safe-top {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* 터치 최적화 */
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+/* 모바일에서 텍스트 크기 조정 방지 */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 모바일에서 버튼과 입력 요소 최적화 */
+button, input {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* iOS에서 확대/축소 방지 */
+input[type="text"], input[type="number"] {
+  font-size: 16px !important;
+}
+
+/* 모바일에서 스크롤 성능 개선 */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 포커스 스타일 개선 */
+button:focus-visible, input:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
 }

@@ -1,4 +1,4 @@
-import { Room, Player, GameSettings } from '../../../shared/types';
+import { Room, Player, GameSettings } from '../types';
 
 export class RoomService {
   private rooms: Map<string, Room> = new Map();
@@ -13,6 +13,7 @@ export class RoomService {
       wins: 0,
       isReady: false,
       isBidding: false,
+      isHoldingButton: false,
       role
     };
 
@@ -28,7 +29,9 @@ export class RoomService {
         status: 'waiting',
         currentRound: 0,
         countdownSeconds: 5,
-        currentBids: new Map()
+        buttonPressStartTimes: new Map(),
+        currentBids: new Map(),
+        roundHistory: []
       }
     };
 
@@ -48,6 +51,7 @@ export class RoomService {
       wins: 0,
       isReady: false,
       isBidding: false,
+      isHoldingButton: false,
       role
     };
 

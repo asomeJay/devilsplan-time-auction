@@ -5,6 +5,7 @@ export interface Player {
     wins: number;
     isReady: boolean;
     isBidding: boolean;
+    isHoldingButton: boolean;
     role: 'player' | 'display';
   }
   
@@ -26,6 +27,7 @@ export interface Player {
     currentRound: number;
     countdownSeconds: number;
     roundStartTime?: number;
+    buttonPressStartTimes: Map<string, number>;
     currentBids: Map<string, number>;
     roundHistory: RoundResult[];
   }
@@ -48,4 +50,4 @@ export interface Player {
     loser: Player;
     allPlayers: Player[];
     rounds: RoundResult[];
-  }
+  } 
