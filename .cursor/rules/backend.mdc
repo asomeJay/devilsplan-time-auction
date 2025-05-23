@@ -1,0 +1,15 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+// 서버 구성
+- Node.js + Express
+- TypeScript
+- Socket.io (WebSocket)
+- Cors (CORS 처리)
+- Dotenv (환경변수)
+
+// 선택사항
+- Redis (룸 상태 저장)
+- PM2 (프로세스 관리)

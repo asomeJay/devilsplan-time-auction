@@ -1,0 +1,16 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+// 핵심 기술
+- React 18 + TypeScript
+- Vite (빌드 도구)
+- React Router (라우팅)
+- Zustand (상태 관리)
+- Socket.io-client (실시간 통신)
+- Tailwind CSS + Framer Motion (UI/애니메이션)
+
+// PWA 설정
+- Workbox (Service Worker)
+- Web App Manifest

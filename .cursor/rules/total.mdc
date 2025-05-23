@@ -1,0 +1,42 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+time-auction/
+├── client/                 # 프론트엔드
+│   ├── src/
+│   │   ├── components/     # UI 컴포넌트
+│   │   │   ├── common/
+│   │   │   ├── player/
+│   │   │   └── display/
+│   │   ├── pages/         # 페이지 컴포넌트
+│   │   │   ├── Home.tsx
+│   │   │   ├── Room.tsx
+│   │   │   ├── Game.tsx
+│   │   │   └── Display.tsx
+│   │   ├── hooks/         # 커스텀 훅
+│   │   │   ├── useSocket.ts
+│   │   │   ├── useGame.ts
+│   │   │   └── useVibration.ts
+│   │   ├── services/      # API & Socket 서비스
+│   │   ├── store/         # Zustand 스토어
+│   │   ├── types/         # TypeScript 타입
+│   │   └── utils/         # 유틸리티
+│   └── public/
+│       └── manifest.json
+│
+├── server/                # 백엔드
+│   ├── src/
+│   │   ├── controllers/   # 컨트롤러
+│   │   ├── services/      # 비즈니스 로직
+│   │   │   ├── RoomService.ts
+│   │   │   ├── GameService.ts
+│   │   │   └── TimerService.ts
+│   │   ├── sockets/       # Socket.io 핸들러
+│   │   ├── types/         # TypeScript 타입
+│   │   └── utils/         # 유틸리티
+│   └── index.ts
+│
+└── shared/                # 공통 타입/상수
+    └── types/

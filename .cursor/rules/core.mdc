@@ -1,0 +1,22 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+sequenceDiagram
+    participant P as 플레이어
+    participant S as 서버
+    participant D as 전광판
+
+    P->>S: 룸 생성/참가
+    S->>P: 룸 정보 & 플레이어 목록
+    S->>D: 실시간 상태 업데이트
+    
+    P->>S: 버튼 누르기 (준비)
+    S->>D: 준비 상태 표시
+    S->>P: 카운트다운 시작
+    
+    P->>S: 버튼 떼기 (입찰)
+    S->>S: 입찰 시간 기록
+    S->>D: 낙찰자 정보
+    S->>P: 개인 결과
