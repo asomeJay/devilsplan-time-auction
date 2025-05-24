@@ -40,7 +40,7 @@ export default function Home() {
       if (role === 'display') {
         navigate('/display');
       } else {
-        navigate('/room');
+        navigate('/game');
       }
     });
 

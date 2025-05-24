@@ -1,99 +1,59 @@
-import { Room, Player, GameSettings } from '../types';
+import { GlobalGame, Player, GameSettings } from '../types';
 
-export class RoomService {
-  private rooms: Map<string, Room> = new Map();
-  private playerRoomMap: Map<string, string> = new Map();
+export class GameStateService {
+  private globalGame: GlobalGame | null = null;
+  private playerGameMap: Map<string, boolean> = new Map(); // 플레이어가 게임에 참여했는지 추적
 
-  createGlobalRoom(playerId: string, playerName: string, role: 'player' | 'display'): Room {
-    const roomCode = 'global_game_room';
-    const player: Player = {
-      id: playerId,
-      name: playerName,
-      remainingTime: 600, // 10분
-      wins: 0,
-      isReady: false,
-      isBidding: false,
-      isHoldingButton: false,
-      role
-    };
+  createOrJoinGame(playerId: string, playerName: string, role: 'player' | 'display'): GlobalGame {
+    // 글로벌 게임이 없으면 생성
+    if (!this.globalGame) {
+      const player: Player = {
+        id: playerId,
+        name: playerName,
+        remainingTime: 600, // 10분
+        wins: 0,
+        isReady: false,
+        isBidding: false,
+        isHoldingButton: false,
+        role
+      };
 
-    const room: Room = {
-      code: roomCode,
-      players: [player],
-      hostId: playerId,
-      settings: {
-        timePerPlayer: 600,
-        totalRounds: 19
-      },
-      gameState: {
-        status: 'waiting',
-        currentRound: 0,
-        countdownSeconds: 5,
-        buttonPressStartTimes: new Map(),
-        currentBids: new Map(),
-        roundHistory: []
-      }
-    };
+      this.globalGame = {
+        players: [player],
+        hostId: playerId,
+        settings: {
+          timePerPlayer: 600,
+          totalRounds: 19
+        },
+        gameState: {
+          status: 'configuring',
+          currentRound: 0,
+          countdownSeconds: 5,
+          buttonPressStartTimes: new Map(),
+          currentBids: new Map(),
+          roundHistory: []
+        }
+      };
 
-    this.rooms.set(roomCode, room);
-    this.playerRoomMap.set(playerId, roomCode);
-    return room;
-  }
-
-  createRoom(playerId: string, playerName: string, role: 'player' | 'display'): Room {
-    const roomCode = this.generateRoomCode();
-    const player: Player = {
-      id: playerId,
-      name: playerName,
-      remainingTime: 600, // 10분
-      wins: 0,
-      isReady: false,
-      isBidding: false,
-      isHoldingButton: false,
-      role
-    };
-
-    const room: Room = {
-      code: roomCode,
-      players: [player],
-      hostId: playerId,
-      settings: {
-        timePerPlayer: 600,
-        totalRounds: 19
-      },
-      gameState: {
-        status: 'waiting',
-        currentRound: 0,
-        countdownSeconds: 5,
-        buttonPressStartTimes: new Map(),
-        currentBids: new Map(),
-        roundHistory: []
-      }
-    };
-
-    this.rooms.set(roomCode, room);
-    this.playerRoomMap.set(playerId, roomCode);
-    return room;
-  }
-
-  joinRoom(roomCode: string, playerId: string, playerName: string, role: 'player' | 'display'): Room | undefined {
-    const room = this.rooms.get(roomCode);
-    if (!room) return undefined;
+      this.playerGameMap.set(playerId, true);
+      return this.globalGame;
+    }
 
     // 이미 참가한 플레이어인지 확인
-    const existingPlayer = room.players.find(p => p.id === playerId);
+    const existingPlayer = this.globalGame.players.find(p => p.id === playerId);
     if (existingPlayer) {
       // 이미 참가한 플레이어라면 정보만 업데이트
       existingPlayer.name = playerName;
       existingPlayer.role = role;
-      this.playerRoomMap.set(playerId, roomCode);
-      return room;
+      this.playerGameMap.set(playerId, true);
+      return this.globalGame;
     }
 
+    // 새 플레이어 추가
     const player: Player = {
       id: playerId,
       name: playerName,
-      remainingTime: room.settings.timePerPlayer,
+      remainingTime: this.globalGame.settings.timePerPlayer,
       wins: 0,
       isReady: false,
       isBidding: false,
@@ -101,59 +61,39 @@ export class RoomService {
       role
     };
 
-    room.players.push(player);
-    this.playerRoomMap.set(playerId, roomCode);
-    return room;
+    this.globalGame.players.push(player);
+    this.playerGameMap.set(playerId, true);
+    return this.globalGame;
   }
 
-  getRoom(roomCode: string): Room | undefined {
-    return this.rooms.get(roomCode);
+  getGame(): GlobalGame | null {
+    return this.globalGame;
   }
 
-  updateSettings(roomCode: string, settings: Partial<GameSettings>): Room | undefined {
-    const room = this.rooms.get(roomCode);
-    if (!room) return undefined;
+  updateSettings(settings: Partial<GameSettings>): GlobalGame | null {
+    if (!this.globalGame) return null;
 
-    room.settings = { ...room.settings, ...settings };
+    this.globalGame.settings = { ...this.globalGame.settings, ...settings };
     
     // 모든 플레이어의 시간 업데이트
-    room.players.forEach(player => {
-      player.remainingTime = room.settings.timePerPlayer;
+    this.globalGame.players.forEach(player => {
+      player.remainingTime = this.globalGame!.settings.timePerPlayer;
     });
     
-    return room;
+    return this.globalGame;
   }
 
-  removePlayer(playerId: string): Room | undefined {
-    const roomCode = this.playerRoomMap.get(playerId);
-    if (!roomCode) return undefined;
+  removePlayer(playerId: string): GlobalGame | null {
+    if (!this.globalGame) return null;
 
-    const room = this.rooms.get(roomCode);
-    if (!room) return undefined;
+    this.globalGame.players = this.globalGame.players.filter(p => p.id !== playerId);
+    this.playerGameMap.delete(playerId);
 
-    room.players = room.players.filter(p => p.id !== playerId);
-    this.playerRoomMap.delete(playerId);
-
-    // 글로벌 룸이 아닌 경우에만 빈 룸 삭제
-    if (room.players.length === 0 && roomCode !== 'global_game_room') {
-      this.rooms.delete(roomCode);
+    // 모든 플레이어가 나가면 게임 상태 리셋
+    if (this.globalGame.players.length === 0) {
+      this.globalGame = null;
     }
 
-    return room;
-  }
-
-  private generateRoomCode(): string {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < 5; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    
-    // 중복 확인
-    if (this.rooms.has(result)) {
-      return this.generateRoomCode();
-    }
-    
-    return result;
+    return this.globalGame;
   }
 }

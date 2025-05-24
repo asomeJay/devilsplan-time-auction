@@ -5,15 +5,8 @@ export interface Player {
     wins: number;
     isReady: boolean;
     isBidding: boolean;
+    isHoldingButton?: boolean;
     role: 'player' | 'display';
-  }
-  
-  export interface Room {
-    code: string;
-    players: Player[];
-    hostId: string;
-    settings: GameSettings;
-    gameState: GameState;
   }
   
   export interface GameSettings {
@@ -26,8 +19,19 @@ export interface Player {
     currentRound: number;
     countdownSeconds: number;
     roundStartTime?: number;
+    commonTimerStarted?: boolean;
+    isWaitingForCountdown?: boolean;
+    countdownStartTime?: number;
+    buttonPressStartTimes?: Map<string, number>;
     currentBids: Map<string, number>;
     roundHistory: RoundResult[];
+  }
+  
+  export interface GlobalGame {
+    players: Player[];
+    hostId: string;
+    settings: GameSettings;
+    gameState: GameState;
   }
   
   export interface RoundResult {

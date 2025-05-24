@@ -18,6 +18,9 @@ export default function Game() {
   const [socketConnected, setSocketConnected] = useState(false);
   const [lastEvent, setLastEvent] = useState('none');
   const [isParticipating, setIsParticipating] = useState(false); // 현재 라운드 참여 여부
+  const [finalResults, setFinalResults] = useState<any>(null);
+  const [remainingTime, setRemainingTime] = useState(600); // 플레이어의 남은 시간
+  const [elapsedTime, setElapsedTime] = useState(0); // 라운드 경과 시간
   
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -119,10 +122,6 @@ export default function Game() {
       }
     });
 
-    socket.on('time:update', () => {
-      setLastEvent('time:update');
-    });
-
     socket.on('bid:confirmed', () => {
       console.log('Received bid:confirmed event');
       setLastEvent('bid:confirmed');
@@ -161,20 +160,42 @@ export default function Game() {
       console.log('Received game:ended event', results);
       setLastEvent('game:ended');
       setGameStatus('ended');
+      setFinalResults(results);
       setIsGameActive(false);
       setIsButtonPressed(false);
       setIsParticipating(false);
+    });
+
+    socket.on('game:timeUpdate', (data: { elapsedTime: number, roundStartTime: number, players?: any[] }) => {
+      setElapsedTime(data.elapsedTime);
+      
+      // 내 플레이어 정보 업데이트 (시간 정보)
+      if (data.players && socket.id) {
+        const myPlayer = data.players.find(p => p.id === socket.id);
+        if (myPlayer) {
+          setRemainingTime(myPlayer.remainingTime);
+        }
+      }
+    });
+
+    // 게임 상태 업데이트 (상태 동기화만)
+    socket.on('game:updated', (game: any) => {
+      // 게임 상태 동기화만 수행
+      if (game.gameState?.status) {
+        setGameStatus(game.gameState.status);
+      }
     });
 
     return () => {
       socket.off('round:prepare');
       socket.off('game:countdown');
       socket.off('round:started');
-      socket.off('time:update');
       socket.off('bid:confirmed');
       socket.off('player:giveup');
       socket.off('round:ended');
       socket.off('game:ended');
+      socket.off('game:timeUpdate');
+      socket.off('game:updated');
     };
   }, [socket, vibrate]);
 
@@ -232,6 +253,14 @@ export default function Game() {
           <div>라운드 {currentRound}/19</div>
           <div>승리: {wins}</div>
         </div>
+        <div className="flex justify-between items-center mt-2">
+          <div className="text-sm text-yellow-400">
+            남은 시간: {Math.max(0, remainingTime).toFixed(1)}초
+          </div>
+          <div className={`text-xs px-2 py-1 rounded ${remainingTime <= 0 ? 'bg-red-600' : 'bg-green-600'}`}>
+            {remainingTime <= 0 ? '시간 소진' : '사용 가능'}
+          </div>
+        </div>
         <div className="text-xs text-gray-300 mt-2">
           Status: {gameStatus} | Socket: {socketConnected ? 'Connected' : 'Disconnected'} | Last: {lastEvent}
         </div>
@@ -241,16 +270,27 @@ export default function Game() {
       </div>
 
       <div className="flex-main-mobile flex items-center justify-center p-4 safe-bottom touch-manipulation">
-        {gameStatus === 'waiting' && (
-          <div className="text-center w-full">
-            <h2 className="text-2xl mb-4">게임 대기 중...</h2>
-            <p className="text-gray-400">다른 플레이어들을 기다리고 있습니다.</p>
-          </div>
-        )}
-
         {gameStatus!='roundEnd' && (
           <div className="text-center w-full">
-            {hasGivenUp && (
+            {gameStatus === 'configuring' && (
+              <div className="space-y-6">
+                <div className="text-4xl">⏳</div>
+                <div className="text-2xl">호스트가 게임을 설정 중입니다</div>
+                <div className="text-lg text-gray-400">잠시만 기다려주세요</div>
+              </div>
+            )}
+            
+            {gameStatus === 'waiting' && (
+              <div className="space-y-6">
+                <div className="text-4xl">👥</div>
+                <div className="text-2xl">게임 시작 대기 중</div>
+                <div className="text-lg text-gray-400">
+                  모든 플레이어가 준비되면 호스트가 게임을 시작합니다
+                </div>
+              </div>
+            )}
+            
+            {hasGivenUp && gameStatus !== 'configuring' && gameStatus !== 'waiting' && (
               <div className="space-y-4">
                 <div className="w-48 h-48 rounded-full bg-gray-600 flex items-center justify-center mx-auto">
                   <div className="text-center">
@@ -260,34 +300,35 @@ export default function Game() {
                 </div>
               </div>
             )}
-            {!hasGivenUp && (
+            {!hasGivenUp && gameStatus !== 'configuring' && gameStatus !== 'waiting' && (
               <>
                 <div className="space-y-4">
                   {gameStatus=='prepare' && countdown === -1 && (
                     <p className="text-lg mb-4 text-yellow-400">
                       모든 플레이어가 버튼을 누르면 5초 카운트다운이 시작됩니다
                     </p>
-                  )} 
+                  )}
+                  
+                  {remainingTime <= 0 && (
+                    <p className="text-sm mb-4 text-red-400">
+                      ⚠️ 시간이 소진되었습니다. 버튼을 누를 수 있지만 추가 시간은 제한됩니다.
+                    </p>
+                  )}
+                  
                   <button
                     ref={buttonRef}
                     onTouchStart={handleButtonPress}
                     onTouchEnd={handleButtonRelease}
                     onMouseDown={handleButtonPress}
                     onMouseUp={handleButtonRelease}
-                    className={`w-48 h-48 rounded-full text-2xl font-bold transition-all ${
-                      isButtonPressed && isParticipating
-                        ? 'bg-green-600 scale-95' 
-                        : 'bg-gray-700 hover:bg-gray-600'
+                    className={`w-72 h-72 md:w-[28rem] md:h-[28rem] rounded-full text-4xl font-bold transition-all ${
+                        isButtonPressed && isParticipating
+                            ? (remainingTime <= 0 ? 'bg-orange-600 scale-95' : 'bg-red-600 scale-95')
+                            : (remainingTime <= 0 ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-700 hover:bg-gray-600')
                     }`}
+                    style={{ maxWidth: '90vw', maxHeight: '60vh' }}
                     disabled={hasGivenUp}
-                  >
-                    {hasGivenUp 
-                      ? '포기함' 
-                      : isButtonPressed && isParticipating
-                        ? countdown > 0 ? '참여 중...' : '대기 중...'
-                        : '버튼 누르기'
-                    }
-                  </button>
+                  />
                 </div>
               </>
             )}
@@ -316,6 +357,46 @@ export default function Game() {
                 아무도 입찰하지 않았습니다
               </p>
             )}
+            
+            {/* 다음 라운드 대기 메시지 */}
+            <div className="mt-8">
+              <div className="text-lg text-yellow-400">
+                호스트가 다음 라운드를 시작하기를 기다리는 중...
+              </div>
+            </div>
+          </div>
+        )}
+
+        {gameStatus === 'ended' && finalResults && (
+          <div className="text-center w-full">
+            <h2 className="text-4xl font-bold mb-4">🏆 게임 종료!</h2>
+            
+            {/* 최종 결과 */}
+            <div className="space-y-4">
+              <div className="bg-yellow-600 p-4 rounded-lg">
+                <h3 className="text-2xl font-bold mb-2">🥇 최종 우승자</h3>
+                <div className="text-xl">{finalResults.winner.name}</div>
+                <div className="text-sm text-yellow-200">총 {finalResults.winner.wins}승</div>
+              </div>
+              
+              {/* 내 순위 */}
+              <div className="bg-gray-700 p-4 rounded-lg">
+                <h3 className="text-lg font-bold mb-2">내 결과</h3>
+                <div className="text-lg">총 {wins}승</div>
+                <div className="text-sm text-gray-400">
+                  순위: {finalResults.allPlayers.findIndex((p: any) => p.id === socket?.id) + 1}위
+                </div>
+              </div>
+              
+              <div className="mt-6">
+                <button
+                  onClick={() => window.location.href = '/'}
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
+                >
+                  홈으로 돌아가기
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

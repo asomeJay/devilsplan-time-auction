@@ -9,8 +9,7 @@ export interface Player {
     role: 'player' | 'display';
   }
   
-  export interface Room {
-    code: string;
+  export interface GlobalGame {
     players: Player[];
     hostId: string;
     settings: GameSettings;
@@ -23,7 +22,7 @@ export interface Player {
   }
   
   export interface GameState {
-    status: 'waiting' | 'countdown' | 'playing' | 'roundEnd' | 'ended' | 'prepare';
+    status: 'configuring' | 'waiting' | 'countdown' | 'playing' | 'roundEnd' | 'ended' | 'prepare';
     currentRound: number;
     countdownSeconds: number;
     roundStartTime?: number;
