@@ -13,9 +13,9 @@ function App() {
         <div className="min-h-screen bg-gray-900 text-white">
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/room/:roomCode" element={<Room />} />
-            <Route path="/game/:roomCode" element={<Game />} />
-            <Route path="/display/:roomCode" element={<Display />} />
+            <Route path="/room" element={<Room />} />
+            <Route path="/game" element={<Game />} />
+            <Route path="/display" element={<Display />} />
           </Routes>
         </div>
       </Router>

@@ -23,13 +23,16 @@ export interface Player {
   }
   
   export interface GameState {
-    status: 'waiting' | 'countdown' | 'playing' | 'roundEnd' | 'ended';
+    status: 'waiting' | 'countdown' | 'playing' | 'roundEnd' | 'ended' | 'prepare';
     currentRound: number;
     countdownSeconds: number;
     roundStartTime?: number;
     buttonPressStartTimes: Map<string, number>;
     currentBids: Map<string, number>;
     roundHistory: RoundResult[];
+    isWaitingForCountdown?: boolean;
+    commonTimerStarted?: boolean;
+    countdownStartTime?: number;
   }
   
   export interface RoundResult {

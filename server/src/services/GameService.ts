@@ -11,6 +11,8 @@ export class GameService {
     room.gameState.buttonPressStartTimes.clear();
     room.gameState.roundStartTime = undefined;
     room.gameState.roundHistory = [];
+    room.gameState.isWaitingForCountdown = false;
+    room.gameState.commonTimerStarted = false;
     
     // 모든 플레이어 상태 초기화
     room.players.forEach(player => {
@@ -32,65 +34,126 @@ export class GameService {
     room.gameState.currentBids.clear();
     room.gameState.buttonPressStartTimes.clear();
     room.gameState.status = 'playing';
+    room.gameState.isWaitingForCountdown = false;
+    room.gameState.commonTimerStarted = false;
+    room.gameState.roundStartTime = undefined;
+    room.gameState.countdownStartTime = undefined;
   }
 
   // 버튼 누르기 시작
-  startButtonPress(roomCode: string, playerId: string): Room | null {
+  startButtonPress(roomCode: string, playerId: string): { shouldStartCountdown: boolean, room: Room } | undefined {
     const room = this.roomService.getRoom(roomCode);
-    if (!room) return null;
+    if (!room) return undefined;
 
     const player = room.players.find(p => p.id === playerId);
     if (player && player.role === 'player') {
       player.isHoldingButton = true;
+      console.log(`플레이어 ${player.name} (${playerId}) 버튼 누르기 시작`);
       
       // 모든 플레이어가 버튼을 누르고 있는지 확인
-      if (this.areAllPlayersHoldingButton(room)) {
-        // 라운드 시작 시간 기록
-        room.gameState.roundStartTime = Date.now();
-        // 각 플레이어의 버튼 누르기 시작 시간 기록
-        room.players.forEach(p => {
-          if (p.role === 'player' && p.isHoldingButton) {
-            room.gameState.buttonPressStartTimes.set(p.id, Date.now());
-          }
-        });
+      if (this.areAllPlayersHoldingButton(room) && !room.gameState.isWaitingForCountdown && !room.gameState.commonTimerStarted) {
+        // 5초 카운트다운 시작
+        room.gameState.isWaitingForCountdown = true;
+        room.gameState.countdownStartTime = Date.now(); // 카운트다운 시작 시간 기록
+        console.log(`모든 플레이어가 버튼을 누름. 카운트다운 시작`);
+        return { shouldStartCountdown: true, room };
       }
     }
 
-    return room;
+    return { shouldStartCountdown: false, room };
   }
 
-  // 버튼 누르기 종료 (입찰)
-  endButtonPress(roomCode: string, playerId: string): { bidTime: number } | null {
+  // 5초 카운트다운 후 공통 타이머 시작
+  startCommonTimer(roomCode: string): { room: Room, playersStillHolding: string[] } | undefined {
     const room = this.roomService.getRoom(roomCode);
-    if (!room) return null;
+    if (!room) return undefined;
+
+    // 카운트다운이 끝난 시점에서 여전히 버튼을 누르고 있는 플레이어들 확인
+    const playersStillHolding = room.players
+      .filter(p => p.role === 'player' && p.isHoldingButton)
+      .map(p => p.id);
+
+    console.log(`카운트다운 종료. 여전히 버튼을 누르고 있는 플레이어들:`, playersStillHolding);
+
+    // 공통 타이머 시작
+    room.gameState.roundStartTime = Date.now();
+    room.gameState.commonTimerStarted = true;
+    room.gameState.isWaitingForCountdown = false;
+
+    // 여전히 버튼을 누르고 있는 플레이어들을 입찰 상태로 전환
+    room.players.forEach(player => {
+      if (player.role === 'player' && player.isHoldingButton) {
+        player.isBidding = true;
+        console.log(`플레이어 ${player.name} 입찰 상태로 전환`);
+      } else if (player.role === 'player') {
+        // 버튼을 누르지 않고 있는 플레이어는 이미 포기한 상태
+        console.log(`플레이어 ${player.name} 이미 포기함`);
+      }
+    });
+
+    return { room, playersStillHolding };
+  }
+
+  // 버튼 누르기 종료 (입찰 또는 포기)
+  endButtonPress(roomCode: string, playerId: string): { bidTime?: number, isGiveUp?: boolean } | undefined {
+    const room = this.roomService.getRoom(roomCode);
+    if (!room) return undefined;
 
     const player = room.players.find(p => p.id === playerId);
-    if (!player || !player.isHoldingButton || !room.gameState.roundStartTime) return null;
+    if (!player) {
+      console.log(`플레이어 ${playerId} 찾을 수 없음`);
+      return undefined;
+    }
 
-    // 버튼 누르기 시작 시간 가져오기
-    const startTime = room.gameState.buttonPressStartTimes.get(playerId);
-    if (!startTime) return null;
+    console.log(`플레이어 ${player.name} 버튼 릴리즈. 현재 상태:`, {
+      isHoldingButton: player.isHoldingButton,
+      isBidding: player.isBidding,
+      isWaitingForCountdown: room.gameState.isWaitingForCountdown,
+      commonTimerStarted: room.gameState.commonTimerStarted
+    });
 
-    // 입찰 시간 계산 (버튼을 누르고 있었던 시간)
-    const bidTime = Date.now() - startTime;
-    room.gameState.currentBids.set(playerId, bidTime);
-    
-    // 플레이어 상태 업데이트
-    player.isHoldingButton = false;
-    player.isBidding = false;
-    
-    return { bidTime };
+    // 카운트다운 중에 손을 뗀 경우 = 입찰 포기
+    if (room.gameState.isWaitingForCountdown && room.gameState.countdownStartTime) {
+      player.isHoldingButton = false;
+      player.isBidding = false;
+      console.log(`플레이어 ${player.name} 입찰 포기 (카운트다운 중 버튼 릴리즈)`);
+      return { isGiveUp: true };
+    }
+    // 공통 타이머가 시작된 후에 손을 뗀 경우 = 입찰
+    else if (room.gameState.commonTimerStarted && room.gameState.roundStartTime && player.isBidding) {
+      const bidTime = Date.now() - room.gameState.roundStartTime;
+      room.gameState.currentBids.set(playerId, bidTime);
+      
+      // 플레이어 상태 업데이트
+      player.isHoldingButton = false;
+      player.isBidding = false;
+      
+      console.log(`플레이어 ${player.name} 입찰 완료: ${bidTime}ms`);
+      return { bidTime };
+    }
+    // 그 외의 경우는 단순히 버튼 상태만 해제 (준비 단계에서 놓기)
+    else {
+      player.isHoldingButton = false;
+      player.isBidding = false;
+      console.log(`플레이어 ${player.name} 버튼 상태 해제 (준비 단계)`);
+      return undefined;
+    }
   }
 
   // 모든 플레이어가 버튼을 누르고 있는지 확인
   areAllPlayersHoldingButton(room: Room): boolean {
     const players = room.players.filter(p => p.role === 'player');
+    const holdingPlayers = players.filter(p => p.isHoldingButton);
+    
+    console.log(`전체 플레이어: ${players.length}, 버튼 누르고 있는 플레이어: ${holdingPlayers.length}`);
+    console.log('버튼 누르고 있는 플레이어들:', holdingPlayers.map(p => p.name));
+    
     return players.length > 0 && players.every(p => p.isHoldingButton);
   }
 
-  setPlayerReady(roomCode: string, playerId: string): Room | null {
+  setPlayerReady(roomCode: string, playerId: string): Room | undefined {
     const room = this.roomService.getRoom(roomCode);
-    if (!room) return null;
+    if (!room) return undefined;
 
     const player = room.players.find(p => p.id === playerId);
     if (player) {
@@ -100,9 +163,9 @@ export class GameService {
     return room;
   }
 
-  togglePlayerReady(roomCode: string, playerId: string): Room | null {
+  togglePlayerReady(roomCode: string, playerId: string): Room | undefined {
     const room = this.roomService.getRoom(roomCode);
-    if (!room) return null;
+    if (!room) return undefined;
 
     const player = room.players.find(p => p.id === playerId);
     if (player && player.role === 'player') {
@@ -126,12 +189,12 @@ export class GameService {
     });
   }
 
-  placeBid(roomCode: string, playerId: string): { bidTime: number } | null {
+  placeBid(roomCode: string, playerId: string): { bidTime: number } | undefined {
     const room = this.roomService.getRoom(roomCode);
-    if (!room) return null;
+    if (!room) return undefined;
 
     const player = room.players.find(p => p.id === playerId);
-    if (!player || !player.isBidding || !room.gameState.roundStartTime) return null;
+    if (!player || !player.isBidding || !room.gameState.roundStartTime) return undefined;
 
     // 라운드 시작 시간으로부터 경과 시간 계산
     const bidTime = Date.now() - room.gameState.roundStartTime;
@@ -143,17 +206,24 @@ export class GameService {
     return { bidTime };
   }
 
-  checkRoundEnd(room: Room): RoundResult | null {
+  checkRoundEnd(room: Room): RoundResult | undefined {
     const activePlayers = room.players.filter(p => p.role === 'player');
     
-    // 모든 플레이어가 입찰을 완료했는지 확인 (버튼에서 손을 뗐는지)
-    const playersStillHolding = activePlayers.filter(p => p.isHoldingButton);
+    // 아직 입찰 중인 플레이어들 (버튼을 누르고 있는 플레이어들)
+    const playersStillBidding = activePlayers.filter(p => p.isBidding || p.isHoldingButton);
     
-    if (playersStillHolding.length === 0) {
+    console.log(`라운드 종료 체크:`, {
+      totalPlayers: activePlayers.length,
+      stillBidding: playersStillBidding.length,
+      bidsReceived: room.gameState.currentBids.size
+    });
+    
+    // 모든 플레이어가 입찰을 완료했거나 포기한 경우
+    if (playersStillBidding.length === 0) {
       return this.determineRoundWinner(room);
     }
 
-    return null;
+    return undefined;
   }
 
   private determineRoundWinner(room: Room): RoundResult {
@@ -171,6 +241,12 @@ export class GameService {
       bidTime: room.gameState.currentBids.get(player.id) || 0
     }));
 
+    console.log('라운드 결과 계산:', {
+      totalPlayers: activePlayers.length,
+      biddedPlayers: biddedPlayers.length,
+      bids: bids.map(b => ({ name: b.playerName, time: b.bidTime }))
+    });
+
     let result: RoundResult;
 
     if (biddedPlayers.length === 0) {
@@ -180,6 +256,7 @@ export class GameService {
         isDraw: true,
         bids: []
       };
+      console.log('유찰 - 아무도 입찰하지 않음');
     } else {
       // 가장 늦게 입찰한 플레이어 찾기 (가장 큰 bidTime)
       let latestBidder = biddedPlayers[0];
@@ -204,6 +281,8 @@ export class GameService {
         isDraw: false,
         bids
       };
+
+      console.log(`승리자: ${latestBidder.name}, 입찰 시간: ${latestBidTime}ms`);
     }
 
     // 라운드 결과를 히스토리에 저장
@@ -214,10 +293,14 @@ export class GameService {
 
   // 시간 초과로 라운드 종료 (입찰하지 않은 플레이어들은 자동 탈락)
   endRoundByTimeout(room: Room): RoundResult {
+    console.log('시간 초과로 라운드 종료');
+    
     // 아직 입찰하지 않은 플레이어들을 입찰 완료로 처리 (단, 입찰 기록은 남기지 않음)
     room.players.forEach(player => {
-      if (player.role === 'player' && player.isBidding) {
+      if (player.role === 'player' && (player.isBidding || player.isHoldingButton)) {
         player.isBidding = false;
+        player.isHoldingButton = false;
+        console.log(`플레이어 ${player.name} 시간 초과로 자동 종료`);
       }
     });
 
@@ -235,7 +318,7 @@ export class GameService {
       winner: sortedPlayers[0],
       loser: sortedPlayers[sortedPlayers.length - 1],
       allPlayers: sortedPlayers,
-      rounds: [] // 실제로는 라운드 결과를 저장해야 함
+      rounds: room.gameState.roundHistory
     };
   }
 }

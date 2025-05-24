@@ -1,29 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
 import { useSocket } from '../contexts/SocketContext';
-import { motion } from 'framer-motion';
 
 export default function Display() {
-  const { roomCode } = useParams();
   const { socket } = useSocket();
-  
+  const [room, setRoom] = useState<any>(null);
+  const [players, setPlayers] = useState<any[]>([]);
+  const [isHost, setIsHost] = useState(false);
+  const [gameStatus, setGameStatus] = useState('waiting');
   const [currentRound, setCurrentRound] = useState(1);
   const [countdown, setCountdown] = useState(-1);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [gameStatus, setGameStatus] = useState('waiting');
   const [roundResult, setRoundResult] = useState<any>(null);
-  const [players, setPlayers] = useState<any[]>([]);
-  const [playerBids, setPlayerBids] = useState<Map<string, number>>(new Map());
-  const [room, setRoom] = useState<any>(null);
-  const [isHost, setIsHost] = useState(false);
   const [roundHistory, setRoundHistory] = useState<any[]>([]);
+  const [playerBids, setPlayerBids] = useState<Map<string, number>>(new Map());
   const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    if (!socket || !roomCode) return;
+    if (!socket) return;
 
     // Display로 게임 룸에 참여
-    socket.emit('game:join', roomCode);
+    socket.emit('game:rejoin');
 
     socket.on('room:updated', (room: any) => {
       setRoom(room);
@@ -68,6 +64,16 @@ export default function Display() {
       setRoundHistory(prev => [...prev, result]);
     });
 
+    socket.on('room:updated', (room: any) => {
+      console.log('room:updated', room);
+      console.log('room.players', room.players);
+      console.log('room.gameState', room.gameState);
+    });
+
+    socket.on('player:gaveup', (player: any) => {
+      console.log('player:gaveup', player);
+    });
+
     return () => {
       socket.off('room:updated');
       socket.off('room:joined');
@@ -77,16 +83,16 @@ export default function Display() {
       socket.off('player:bid');
       socket.off('round:ended');
     };
-  }, [socket, roomCode]);
+  }, [socket]);
 
   const updateSettings = (key: string, value: number) => {
     if (!socket || !isHost) return;
-    socket.emit('game:updateSettings', roomCode, { [key]: value });
+    socket.emit('game:updateSettings', { [key]: value });
   };
 
   const startGame = () => {
     if (!socket || !isHost) return;
-    socket.emit('game:start', roomCode);
+    socket.emit('game:start');
   };
 
   if (!room) {
@@ -152,12 +158,15 @@ export default function Display() {
             {/* 플레이어 준비 상태 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {players.map((player) => (
+                <>  
+                <div>{JSON.stringify(player)}</div>
                 <div key={player.id} className={`p-2 rounded text-center text-sm ${
                   player.isReady ? 'bg-green-600' : 'bg-red-600'
                 }`}>
                   <div className="font-medium">{player.name}</div>
                   <div className="text-xs">{player.isReady ? '준비됨' : '대기중'}</div>
                 </div>
+                </>
               ))}
             </div>
           </div>
@@ -176,54 +185,55 @@ export default function Display() {
           )}
 
           {gameStatus === 'prepare' && countdown > 0 && (
-            <motion.div
-              key={countdown}
-              initial={{ scale: 0.5, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 1.5, opacity: 0 }}
-              className="text-9xl font-bold text-yellow-400"
-            >
+            <div className="text-9xl font-bold text-yellow-400">
               {countdown}
-            </motion.div>
+            </div>
+          )}
+
+          {/* ✅ 새로 추가: 준비 단계에서 버튼 누르기 상태 표시 */}
+          {gameStatus === 'prepare' && countdown === -1 && (
+            <div className="space-y-6">
+              <div className="text-4xl text-yellow-400">
+                모든 플레이어가 버튼을 누르면 게임이 시작됩니다
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+                {players.map((player) => (
+                  <div 
+                    key={player.id} 
+                    className={`p-4 rounded-lg text-center transition-all ${
+                      player.isHoldingButton 
+                        ? 'bg-green-600 border-2 border-green-400' 
+                        : 'bg-red-600 border-2 border-red-400'
+                    }`}
+                  >
+                    <div className="text-lg font-bold">{player.name}</div>
+                    <div className="text-sm mt-1">
+                      {player.isHoldingButton ? '✅ 준비됨' : '❌ 대기중'}
+                    </div>
+                    <div className={`w-3 h-3 rounded-full mx-auto mt-2 ${
+                      player.isHoldingButton ? 'bg-green-300' : 'bg-red-300'
+                    }`} />
+                  </div>
+                ))}
+              </div>
+              
+              <div className="text-2xl text-gray-400">
+                {players.filter(p => p.isHoldingButton).length} / {players.length} 플레이어 준비됨
+              </div>
+            </div>
           )}
 
           {gameStatus === 'playing' && (
             <div className="space-y-8">
-              <div className="text-8xl font-mono">
+              <div className="text-6xl font-mono">
                 {elapsedTime.toFixed(1)}s
-              </div>
-              <div className="text-2xl text-gray-400">
-                가장 늦게 입찰한 사람이 승리
-              </div>
-              
-              {/* 현재 입찰 현황 */}
-              <div className="space-y-4">
-                <h3 className="text-3xl">입찰 현황</h3>
-                <div className="grid grid-cols-2 gap-4 max-w-4xl">
-                  {players.map((player) => {
-                    const bidTime = playerBids.get(player.id);
-                    return (
-                      <div key={player.id} className={`p-4 rounded-lg ${
-                        bidTime ? 'bg-green-600' : 'bg-gray-700'
-                      }`}>
-                        <div className="text-xl font-bold">{player.name}</div>
-                        <div className="text-lg">
-                          {bidTime ? `${bidTime.toFixed(2)}초` : '입찰 대기 중'}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             </div>
           )}
 
           {gameStatus === 'roundEnd' && roundResult && (
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="space-y-6"
-            >
+            <div className="space-y-6">
               {roundResult.isDraw ? (
                 <div>
                   <div className="text-6xl mb-4">⚖️</div>
@@ -241,38 +251,10 @@ export default function Display() {
                   <div className="text-2xl text-yellow-400 mb-4">
                     입찰 시간: {roundResult.winTime?.toFixed(2)}초
                   </div>
-                  
-                  {/* 모든 입찰 결과 표시 */}
-                  <div className="text-xl text-gray-400">
-                    <div className="text-2xl mb-2">입찰 순위</div>
-                    <div className="space-y-1">
-                      {Array.from(playerBids.entries())
-                        .sort(([,a], [,b]) => b - a)
-                        .map(([playerId, bidTime], index) => {
-                          const player = players.find(p => p.id === playerId);
-                          return (
-                            <div key={playerId} className={`${
-                              index === 0 ? 'text-yellow-400 font-bold' : ''
-                            }`}>
-                              {index + 1}. {player?.name}: {bidTime.toFixed(2)}초
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
                 </div>
               )}
-            </motion.div>
+            </div>
           )}
-
-          <div className="mt-12 flex justify-center gap-8">
-            {players.map((player) => (
-              <div key={player.id} className="text-center">
-                <div className="text-xl mb-2">{player.name}</div>
-                <div className="text-3xl font-bold">{player.wins} 승</div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
@@ -285,11 +267,10 @@ export default function Display() {
       </button>
 
       {/* 라운드 히스토리 사이드 패널 */}
-      <motion.div
-        initial={{ x: '100%' }}
-        animate={{ x: showHistory ? 0 : '100%' }}
-        transition={{ type: 'spring', damping: 20 }}
-        className="fixed top-0 right-0 h-full w-full md:w-80 bg-gray-900 border-l border-gray-700 z-40 overflow-y-auto"
+      <div
+        className={`fixed top-0 right-0 h-full w-full md:w-80 bg-gray-900 border-l border-gray-700 z-40 overflow-y-auto transition-transform duration-300 ${
+          showHistory ? 'transform translate-x-0' : 'transform translate-x-full'
+        }`}
       >
         <div className="p-4">
           <div className="flex justify-between items-center mb-4">
@@ -338,7 +319,7 @@ export default function Display() {
                                 <span className={`${
                                   bid.playerId === result.winnerId ? 'text-yellow-400 font-medium' : 'text-gray-400'
                                 }`}>
-                                  {bidIndex + 1}. {bid.playerName}
+                                  {index + 1}. {bid.playerName}
                                 </span>
                                 <span className="text-gray-500">
                                   {(bid.bidTime / 1000).toFixed(2)}s
@@ -401,7 +382,7 @@ export default function Display() {
             </div>
           )}
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

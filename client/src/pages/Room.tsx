@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useSocket } from '../contexts/SocketContext';
 import { Room as RoomType } from '../../../shared/types';
 
 export default function Room() {
-  const { roomCode } = useParams();
   const navigate = useNavigate();
   const { socket } = useSocket();
   const [room, setRoom] = useState<RoomType | null>(null);
@@ -31,13 +30,11 @@ export default function Room() {
     socket.on('room:joined', handleRoomUpdate);
 
     socket.on('game:started', () => {
-      navigate(`/game/${roomCode}`);
+      navigate('/game');
     });
 
     // 컴포넌트 마운트 시 현재 방 정보 요청
-    if (roomCode) {
-      socket.emit('room:getInfo', roomCode);
-    }
+    socket.emit('room:getInfo');
 
     return () => {
       socket.off('room:updated');
@@ -45,21 +42,21 @@ export default function Room() {
       socket.off('room:joined');
       socket.off('game:started');
     };
-  }, [socket, roomCode, navigate]);
+  }, [socket, navigate]);
 
   const updateSettings = (key: string, value: number) => {
     if (!socket || !isHost) return;
-    socket.emit('game:updateSettings', roomCode, { [key]: value });
+    socket.emit('game:updateSettings', { [key]: value });
   };
 
   const toggleReady = () => {
-    if (!socket || !roomCode) return;
-    socket.emit('player:toggleReady', roomCode);
+    if (!socket) return;
+    socket.emit('player:toggleReady');
   };
 
   const startGame = () => {
     if (!socket || !isHost) return;
-    socket.emit('game:start', roomCode);
+    socket.emit('game:start');
   };
 
   if (!room) {
@@ -73,7 +70,7 @@ export default function Room() {
     <div className="min-h-screen p-4">
       <div className="max-w-4xl mx-auto">
         <div className="bg-gray-800 p-6 rounded-lg mb-6">
-          <h1 className="text-2xl font-bold mb-4">룸 코드: {roomCode}</h1>
+          <h1 className="text-2xl font-bold mb-4">시간 경매 게임</h1>
           
           {isHost && (
             <div className="space-y-4 mb-6">
