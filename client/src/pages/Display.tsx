@@ -6,7 +6,7 @@ export default function Display() {
   const [game, setGame] = useState<any>(null);
   const [players, setPlayers] = useState<any[]>([]);
   const [isHost, setIsHost] = useState(false);
-  const [gameStatus, setGameStatus] = useState('waiting');
+  const [gameStatus, setGameStatus] = useState('configuring');
   const [currentRound, setCurrentRound] = useState(1);
   const [countdown, setCountdown] = useState(-1);
   const [roundResult, setRoundResult] = useState<any>(null);
@@ -57,6 +57,7 @@ export default function Display() {
     });
 
     socket.on('round:ended', (result: any) => {
+      console.log('round:ended', result);
       setRoundResult(result);
       setGameStatus('roundEnd');
       setCountdown(-1);
@@ -114,6 +115,7 @@ export default function Display() {
   const finishConfiguration = () => {
     if (!socket || !isHost) return;
     socket.emit('game:finishConfiguration');
+    socket.emit('game:start');
   };
 
   const startGame = () => {
@@ -175,41 +177,6 @@ export default function Display() {
             <p className="text-sm text-gray-400 mt-4">
               설정을 완료하면 플레이어들이 입장하여 게임 준비를 할 수 있습니다.
             </p>
-          </div>
-        </div>
-      )}
-
-      {/* 호스트 컨트롤 패널 - waiting 상태에서만 표시 */}
-      {isHost && gameStatus === 'waiting' && (
-        <div className="bg-gray-900 p-4 border-b border-gray-700">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="text-2xl font-bold mb-4">플레이어 대기 중</h2>
-            
-            <div className="mb-4">
-              <h3 className="text-lg font-medium mb-2">현재 설정</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
-                <div>1인당 제공 시간: {game.settings.timePerPlayer}초</div>
-                <div>총 라운드 수: {game.settings.totalRounds}라운드</div>
-              </div>
-            </div>
-
-            <button
-              onClick={startGame}
-              disabled={!allPlayersReady}
-              className={`px-8 py-4 text-xl font-bold rounded-lg transition-colors ${
-                allPlayersReady 
-                  ? 'bg-blue-600 hover:bg-blue-700' 
-                  : 'bg-gray-600 cursor-not-allowed'
-              }`}
-            >
-              게임 시작
-            </button>
-
-            {!allPlayersReady && (
-              <p className="text-sm text-gray-400 mt-4 text-center">
-                모든 플레이어가 준비되어야 게임을 시작할 수 있습니다 (최소 2명)
-              </p>
-            )}
           </div>
         </div>
       )}
@@ -306,9 +273,6 @@ export default function Display() {
                     <div className="text-lg font-bold">{player.name}</div>
                     <div className="text-sm mt-1">
                       {player.isHoldingButton ? '준비됨' : '대기중'}
-                    </div>
-                    <div className="text-xs mt-2 text-gray-200">
-                      남은 시간: {Math.max(0, player.remainingTime || 0).toFixed(1)}초
                     </div>
                   </div>
                 ))}
