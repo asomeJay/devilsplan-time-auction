@@ -144,19 +144,6 @@ export function setupSocketHandlers(io: Server) {
             playerName: player?.name || 'Unknown'
           });
           
-          // 카운트다운 중 포기했으므로 모든 플레이어가 버튼을 누르고 있는지 다시 확인
-          if (game.gameState.isWaitingForCountdown) {
-            const stillHoldingPlayers = game.players.filter(p => p.role === 'player' && p.isHoldingButton);
-            if (stillHoldingPlayers.length === 0) {
-              // 아무도 버튼을 누르고 있지 않으면 카운트다운 중단
-              console.log('모든 플레이어가 포기 - 카운트다운 중단');
-              stopCurrentCountdown();
-              game.gameState.isWaitingForCountdown = false;
-              game.gameState.countdownStartTime = undefined;
-
-              handleAllPlayersGaveUp(io, game);
-            }
-          }
           
           io.to('global_game').emit('game:updated', game);
         }
@@ -324,9 +311,10 @@ export function setupSocketHandlers(io: Server) {
   }
 
   // 버튼 누르기 후 5초 카운트다운 및 공통 타이머 시작
-  function startButtonCountdown(io: Server, game: any) {
-    let countdown = 5;
-    
+// 카운트다운 함수도 수정
+function startButtonCountdown(io: Server, game: any) {
+  let countdown = 5;
+  
     const countdownTick = () => {
       const currentGame = gameStateService.getGame();
       // 카운트다운 중에 상태가 변경되었으면 중단
@@ -339,22 +327,37 @@ export function setupSocketHandlers(io: Server) {
       io.to('global_game').emit('game:countdown', countdown);
       
       if (countdown === 0) {
-        // 공통 타이머 시작
-        console.log('카운트다운 완료 - 공통 타이머 시작');
-        const result = gameService.startCommonTimer();
-        if (result) {
-          console.log('공통 타이머 시작됨:', { 
-            playersStillHolding: result.playersStillHolding 
-          });
-          
-          // 중요: playersStillHolding 정보를 포함하여 round:started 이벤트 전송
-          io.to('global_game').emit('round:started', {
-            round: result.game.gameState.currentRound,
-            playersStillHolding: result.playersStillHolding
-          });
-          
-          // 시간 업데이트 시작
-          startTimeTracking(io, result.game);
+        // 공통 타이머 시작 시점에서 참여자 확인
+        console.log('카운트다운 완료 - 참여자 확인 후 공통 타이머 시작');
+        
+        // 여전히 버튼을 누르고 있는 플레이어들 확인
+        const playersStillHolding = currentGame.players
+          .filter(p => p.role === 'player' && p.isHoldingButton)
+          .map(p => p.id);
+        
+        if (playersStillHolding.length === 0) {
+          // 아무도 참여하지 않으면 유찰 처리
+          console.log('카운트다운 완료했지만 참여자 없음 - 유찰 처리');
+          currentGame.gameState.isWaitingForCountdown = false;
+          currentGame.gameState.countdownStartTime = undefined;
+          handleAllPlayersGaveUp(io, currentGame);
+        } else {
+          // 참여자가 있으면 공통 타이머 시작
+          const result = gameService.startCommonTimer();
+          if (result) {
+            console.log('공통 타이머 시작됨:', { 
+              playersStillHolding: result.playersStillHolding 
+            });
+            
+            // 중요: playersStillHolding 정보를 포함하여 round:started 이벤트 전송
+            io.to('global_game').emit('round:started', {
+              round: result.game.gameState.currentRound,
+              playersStillHolding: result.playersStillHolding
+            });
+            
+            // 시간 업데이트 시작
+            startTimeTracking(io, result.game);
+          }
         }
       } else {
         countdown--;
