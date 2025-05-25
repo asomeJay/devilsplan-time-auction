@@ -523,7 +523,12 @@ export default function Display() {
             <p className="text-gray-400">아직 완료된 라운드가 없습니다.</p>
           ) : (
             <div className="space-y-3">
-              {roundHistory.map((result, index) => (
+              {roundHistory.reduce((acc: any[], result: any) => {
+                if (acc.find((r: any) => r.round === result.round)) {
+                  return acc;
+                }
+                return [...acc, result];
+              }, []).map((result: any, index: number) => (
                 <div key={index} className="bg-gray-800 p-3 rounded-lg">
                   <div className="flex justify-between items-center mb-2">
                     <span className="font-bold">라운드 {result.round}</span>
