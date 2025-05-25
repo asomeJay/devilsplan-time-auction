@@ -7,10 +7,12 @@ export class GameStateService {
   createOrJoinGame(playerId: string, playerName: string, role: 'player' | 'display'): GlobalGame {
     // 글로벌 게임이 없으면 생성
     if (!this.globalGame) {
+      const initialTime = 600; // 정확히 600초로 설정
+      
       const player: Player = {
         id: playerId,
         name: playerName,
-        remainingTime: 600, // 10분
+        remainingTime: initialTime,
         wins: 0,
         isReady: false,
         isBidding: false,
@@ -22,7 +24,7 @@ export class GameStateService {
         players: [player],
         hostId: playerId,
         settings: {
-          timePerPlayer: 600,
+          timePerPlayer: initialTime,
           totalRounds: 19
         },
         gameState: {
@@ -45,6 +47,10 @@ export class GameStateService {
       // 이미 참가한 플레이어라면 정보만 업데이트
       existingPlayer.name = playerName;
       existingPlayer.role = role;
+      // 시간은 현재 설정값으로 정확히 설정
+      if (existingPlayer.role === 'player') {
+        existingPlayer.remainingTime = this.globalGame.settings.timePerPlayer;
+      }
       this.playerGameMap.set(playerId, true);
       return this.globalGame;
     }
@@ -53,7 +59,7 @@ export class GameStateService {
     const player: Player = {
       id: playerId,
       name: playerName,
-      remainingTime: this.globalGame.settings.timePerPlayer,
+      remainingTime: this.globalGame.settings.timePerPlayer, // 정확한 설정값 사용
       wins: 0,
       isReady: false,
       isBidding: false,
@@ -75,9 +81,16 @@ export class GameStateService {
 
     this.globalGame.settings = { ...this.globalGame.settings, ...settings };
     
-    // 모든 플레이어의 시간 업데이트
+    // 모든 플레이어의 시간 업데이트 - 정확한 값으로 설정
     this.globalGame.players.forEach(player => {
-      player.remainingTime = this.globalGame!.settings.timePerPlayer;
+      if (player.role === 'player') {
+        player.remainingTime = this.globalGame!.settings.timePerPlayer;
+        
+        // 부동소수점 오차 방지를 위해 정수로 설정된 경우 정확한 값 보장
+        if (Number.isInteger(this.globalGame!.settings.timePerPlayer)) {
+          player.remainingTime = Math.floor(this.globalGame!.settings.timePerPlayer);
+        }
+      }
     });
     
     return this.globalGame;

@@ -24,6 +24,13 @@ export default function Game() {
   
   const buttonRef = useRef<HTMLButtonElement>(null);
 
+  // 정확한 시간 표시를 위한 헬퍼 함수
+  const formatTime = (time: number): string => {
+    // 0.01초 미만은 0으로 표시
+    const displayTime = time < 0.01 ? 0 : time;
+    return displayTime.toFixed(1);
+  };
+
   // 게임 참여 알림
   useEffect(() => {
     if (!socket) return;
@@ -122,8 +129,8 @@ export default function Game() {
       }
     });
 
-    socket.on('bid:confirmed', () => {
-      console.log('Received bid:confirmed event');
+    socket.on('bid:confirmed', (data: { bidTime: number, autoCompleted?: boolean, reason?: string }) => {
+      console.log('Received bid:confirmed event', data);
       setLastEvent('bid:confirmed');
       setHasBid(true);
       setIsButtonPressed(false);
@@ -173,7 +180,9 @@ export default function Game() {
       if (data.players && socket.id) {
         const myPlayer = data.players.find(p => p.id === socket.id);
         if (myPlayer) {
-          setRemainingTime(myPlayer.remainingTime);
+          // 0.01초 미만은 0으로 설정
+          const displayTime = myPlayer.remainingTime < 0.01 ? 0 : myPlayer.remainingTime;
+          setRemainingTime(displayTime);
         }
       }
     });
@@ -255,10 +264,10 @@ export default function Game() {
         </div>
         <div className="flex justify-between items-center mt-2">
           <div className="text-sm text-yellow-400">
-            남은 시간: {Math.max(0, remainingTime).toFixed(1)}초
+            남은 시간: {formatTime(Math.max(0, remainingTime))}초
           </div>
-          <div className={`text-xs px-2 py-1 rounded ${remainingTime <= 0 ? 'bg-red-600' : 'bg-green-600'}`}>
-            {remainingTime <= 0 ? '시간 소진' : '사용 가능'}
+          <div className={`text-xs px-2 py-1 rounded ${remainingTime <= 0.01 ? 'bg-red-600' : 'bg-green-600'}`}>
+            {remainingTime <= 0.01 ? '시간 소진' : '사용 가능'}
           </div>
         </div>
         <div className="text-xs text-gray-300 mt-2">
@@ -309,7 +318,7 @@ export default function Game() {
                     </p>
                   )}
                   
-                  {remainingTime <= 0 && (
+                  {remainingTime <= 0.01 && (
                     <p className="text-sm mb-4 text-red-400">
                       ⚠️ 시간이 소진되었습니다. 버튼을 누를 수 있지만 추가 시간은 제한됩니다.
                     </p>

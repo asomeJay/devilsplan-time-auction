@@ -1,5 +1,5 @@
 import { GlobalGame, RoundResult, GameResults } from '../types';
-import { GameStateService } from './RoomService';
+import { GameStateService } from './GameStateService';
 
 export class GameService {
   constructor(private gameStateService: GameStateService) {}
@@ -59,9 +59,15 @@ export class GameService {
   startButtonPress(playerId: string): { shouldStartCountdown: boolean, game: GlobalGame } | undefined {
     const game = this.gameStateService.getGame();
     if (!game) return undefined;
-
+  
     const player = game.players.find(p => p.id === playerId);
     if (player && player.role === 'player') {
+    //   // 시간이 소진된 플레이어는 버튼을 누를 수 없음
+    //   if (game.gameState.status === 'playing' && player.remainingTime <= 0.01) {
+    //     console.log(`플레이어 ${player.name} 시간 소진으로 버튼 누르기 거부`);
+    //     return { shouldStartCountdown: false, game };
+    //   }
+  
       player.isHoldingButton = true;
       
       // 버튼 누르기 시작 시간 기록 (시간 차감용)
@@ -78,28 +84,73 @@ export class GameService {
         return { shouldStartCountdown: true, game };
       }
     }
-
+  
     return { shouldStartCountdown: false, game };
   }
 
-  // 플레이어들의 사용한 시간 업데이트 (실시간으로 호출됨)
-  // 이 함수는 UI 표시용으로만 사용하고, 실제 시간 차감은 endButtonPress에서 수행
-  updatePlayerTimes(game: GlobalGame): void {
-    // 실시간 업데이트는 클라이언트 표시용으로만 사용
-    // 실제 정확한 시간 계산은 endButtonPress에서 수행됨
+  // 시간이 소진된 플레이어를 자동으로 입찰 완료 처리
+  autoCompleteExpiredPlayers(game: GlobalGame): { expiredPlayers: string[], shouldEndRound: boolean } {
+    if (!game.gameState.commonTimerStarted || !game.gameState.roundStartTime) {
+      return { expiredPlayers: [], shouldEndRound: false };
+    }
+
     const currentTime = Date.now();
+    const expiredPlayers: string[] = [];
     
-    game.players.forEach(player => {
-      if (player.role === 'player' && player.isHoldingButton && player.isBidding) {
-        const buttonPressStartTime = game.gameState.buttonPressStartTimes.get(player.id);
-        if (buttonPressStartTime) {
-          const elapsedTime = (currentTime - buttonPressStartTime) / 1000; // 초 단위
-          
-          // 표시용으로만 업데이트 (실제 차감은 하지 않음)
-          // endButtonPress에서 정확한 계산 수행
-        }
+    // 현재 입찰 중인 플레이어들 확인
+    const activeBiddingPlayers = game.players.filter(p => 
+      p.role === 'player' && p.isBidding && p.isHoldingButton
+    );
+
+    console.log('시간 소진 체크:', {
+      activeBiddingPlayers: activeBiddingPlayers.map(p => ({
+        name: p.name,
+        remainingTime: p.remainingTime,
+        isHoldingButton: p.isHoldingButton,
+        isBidding: p.isBidding
+      }))
+    });
+
+    activeBiddingPlayers.forEach(player => {
+      const buttonPressStartTime = game.gameState.buttonPressStartTimes.get(player.id);
+      if (!buttonPressStartTime) return;
+
+      // 이번 입찰에서 실제 사용한 시간 계산 (초 단위)
+      const timeUsedThisPress = (currentTime - buttonPressStartTime) / 1000;
+      
+      // 플레이어의 남은 시간을 초과했는지 확인 (0.01초 오차 허용)
+      if (timeUsedThisPress >= (player.remainingTime - 0.01)) {
+        console.log(`플레이어 ${player.name} 시간 소진 - 자동 입찰 처리:`, {
+          timeUsedThisPress,
+          remainingTime: player.remainingTime,
+          difference: timeUsedThisPress - player.remainingTime
+        });
+        
+        expiredPlayers.push(player.id);
+        
+        // 플레이어의 입찰 시간을 정확히 남은 시간으로 제한
+        // 라운드 시작 시간 + 플레이어의 원래 남은 시간
+        const exactBidTime = player.remainingTime * 1000; // 밀리초로 변환
+        
+        game.gameState.currentBids.set(player.id, exactBidTime);
+        
+        // 플레이어 상태 업데이트 - 정확히 0으로 설정
+        player.isHoldingButton = false;
+        player.isBidding = false;
+        player.remainingTime = 0; // 정확히 0으로 설정
+        game.gameState.buttonPressStartTimes.delete(player.id);
+        
+        console.log(`플레이어 ${player.name} 자동 입찰 완료:`, {
+          exactBidTime: exactBidTime,
+          finalRemainingTime: player.remainingTime
+        });
       }
     });
+
+    // 라운드 종료 확인
+    const shouldEndRound = this.checkRoundEnd(game) !== undefined;
+
+    return { expiredPlayers, shouldEndRound };
   }
 
   // 5초 카운트다운 후 공통 타이머 시작
@@ -136,16 +187,25 @@ export class GameService {
   }
 
   // 버튼 누르기 종료 (입찰 또는 포기)
-  endButtonPress(playerId: string): { bidTime?: number, isGiveUp?: boolean, playerTimeExhausted?: boolean } | undefined {
+endButtonPress(playerId: string): { bidTime?: number, isGiveUp?: boolean, playerTimeExhausted?: boolean } | undefined {
     const game = this.gameStateService.getGame();
     if (!game) return undefined;
-
+  
     const player = game.players.find(p => p.id === playerId);
     if (!player) {
       console.log(`플레이어 ${playerId} 찾을 수 없음`);
       return undefined;
     }
-
+  
+    // 시간이 이미 소진된 플레이어의 입찰은 무효화
+    // if (player.remainingTime <= 0.01) {
+    //   console.log(`플레이어 ${player.name} 시간 소진으로 입찰 무효화`);
+    //   player.isHoldingButton = false;
+    //   player.isBidding = false;
+    //   game.gameState.buttonPressStartTimes.delete(playerId);
+    //   return { isGiveUp: true };
+    // }
+  
     console.log(`플레이어 ${player.name} 버튼 릴리즈. 현재 상태:`, {
       isHoldingButton: player.isHoldingButton,
       isBidding: player.isBidding,
@@ -174,28 +234,52 @@ export class GameService {
         return undefined;
       }
       
-      // 이번 입찰에서 실제 사용한 시간 계산
-      const timeUsedThisPress = (currentTime - buttonPressStartTime) / 1000; // 초 단위
+      // 이번 입찰에서 실제 사용한 시간 계산 (초 단위)
+      const timeUsedThisPress = (currentTime - buttonPressStartTime) / 1000;
       
       // 플레이어가 가진 시간으로 입찰 시간 제한
-      // 만약 사용한 시간이 남은 시간을 초과하면, 남은 시간만큼만 입찰 시간으로 인정
       let effectiveBidTime: number;
       let playerTimeExhausted = false;
       
-      if (timeUsedThisPress > player.remainingTime) {
-        // 시간을 초과한 경우: 남은 시간만큼만 입찰 시간으로 인정
-        effectiveBidTime = Math.max(player.remainingTime * 1000, 100); // 최소 0.1초는 보장
+      // 0.01초 오차 허용하여 시간 초과 판단
+      if (timeUsedThisPress > (player.remainingTime + 0.01)) {
+        // 시간을 초과한 경우: 정확히 남은 시간만큼만 입찰 시간으로 인정
+        effectiveBidTime = player.remainingTime * 1000; // 밀리초로 변환
         playerTimeExhausted = true;
         
-        // 플레이어의 남은 시간을 0으로 설정
+        // 플레이어의 남은 시간을 정확히 0으로 설정
         player.remainingTime = 0;
+        
+        console.log(`플레이어 ${player.name} 시간 초과 - 제한된 입찰:`, {
+          timeUsedThisPress,
+          originalRemainingTime: player.remainingTime,
+          effectiveBidTime
+        });
       } else {
         // 시간 내에 입찰한 경우: 실제 입찰 시간 사용
         effectiveBidTime = actualBidTime;
         
         // 플레이어의 남은 시간에서 사용한 시간 차감
-        player.remainingTime = Math.max(0, player.remainingTime - timeUsedThisPress);
+        const newRemainingTime = player.remainingTime - timeUsedThisPress;
+        
+        // 0에 가까우면 정확히 0으로 설정 (부동소수점 오차 처리)
+        player.remainingTime = newRemainingTime < 0.01 ? 0 : Math.max(0, newRemainingTime);
+        
+        console.log(`플레이어 ${player.name} 정상 입찰:`, {
+          timeUsedThisPress,
+          newRemainingTime,
+          finalRemainingTime: player.remainingTime
+        });
       }
+      
+      // 중요: 입찰 시간이 0이거나 매우 작은 경우 입찰 무효화
+    //   if (effectiveBidTime <= 10) { // 10ms 이하는 무효
+    //     console.log(`플레이어 ${player.name} 입찰 시간이 너무 짧아 무효화: ${effectiveBidTime}ms`);
+    //     player.isHoldingButton = false;
+    //     player.isBidding = false;
+    //     game.gameState.buttonPressStartTimes.delete(playerId);
+    //     return { isGiveUp: true };
+    //   }
       
       game.gameState.currentBids.set(playerId, effectiveBidTime);
       

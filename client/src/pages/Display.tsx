@@ -16,6 +16,13 @@ export default function Display() {
   const [finalResults, setFinalResults] = useState<any>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
 
+  // 정확한 시간 표시를 위한 헬퍼 함수
+  const formatTime = (time: number): string => {
+    // 0.01초 미만은 0으로 표시
+    const displayTime = time < 0.01 ? 0 : time;
+    return displayTime.toFixed(1);
+  };
+
   useEffect(() => {
     if (!socket) return;
 
@@ -52,8 +59,13 @@ export default function Display() {
       }
     });
 
-    socket.on('player:bid', (data: { playerId: string, playerName: string, bidTime: number }) => {
+    socket.on('player:bid', (data: { playerId: string, playerName: string, bidTime: number, autoCompleted?: boolean }) => {
       setPlayerBids(prev => new Map(prev.set(data.playerId, data.bidTime / 1000)));
+      
+      // 자동 입찰인 경우 로그 출력
+      if (data.autoCompleted) {
+        console.log(`플레이어 ${data.playerName} 시간 소진으로 자동 입찰 완료`);
+      }
     });
 
     socket.on('round:ended', (result: any) => {
@@ -69,12 +81,6 @@ export default function Display() {
       console.log('Game ended:', results);
       setFinalResults(results);
       setGameStatus('ended');
-    });
-
-    socket.on('game:updated', (game: any) => {
-      console.log('game:updated', game);
-      console.log('game.players', game.players);
-      console.log('game.gameState', game.gameState);
     });
 
     socket.on('player:gaveup', (player: any) => {
@@ -304,12 +310,16 @@ export default function Display() {
                       .sort(([,a], [,b]) => b - a) // 늦게 입찰한 순서대로 정렬
                       .map(([playerId, bidTime]) => {
                         const player = players.find(p => p.id === playerId);
-                        const timeExhausted = player && player.remainingTime <= 0;
+                        const timeExhausted = player && player.remainingTime <= 0.01; // 0.01초 이하는 소진으로 판단
                         return (
-                          <div key={playerId} className="flex justify-between items-center">
-                            <span className={`${timeExhausted ? 'text-red-400' : ''}`}>
+                          <div key={playerId} className={`flex justify-between items-center p-2 rounded ${
+                            timeExhausted ? 'bg-red-900 border border-red-600' : 'bg-gray-700'
+                          }`}>
+                            <span className={`${timeExhausted ? 'text-red-400' : 'text-white'}`}>
                               {player?.name || 'Unknown'}
-                              {timeExhausted && ' (시간 소진)'}
+                              {timeExhausted && (
+                                <span className="text-xs ml-2 px-2 py-1 bg-red-600 rounded">시간 소진</span>
+                              )}
                             </span>
                             <span className="font-mono text-yellow-400">{bidTime.toFixed(2)}초</span>
                           </div>
@@ -319,6 +329,36 @@ export default function Display() {
                   </div>
                 </div>
               )}
+
+              {/* 플레이어 시간 상태를 실시간으로 표시하는 컴포넌트 */}
+              <div className="bg-gray-800 p-4 rounded-lg mt-4">
+                <h3 className="text-lg font-bold mb-3">플레이어 상태</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {players.map(player => {
+                    const displayTime = player.remainingTime < 0.01 ? 0 : player.remainingTime;
+                    return (
+                      <div key={player.id} className={`p-2 rounded text-sm ${
+                        displayTime <= 0 
+                          ? 'bg-red-900 border border-red-600' 
+                          : displayTime <= 30
+                            ? 'bg-yellow-900 border border-yellow-600'
+                            : 'bg-gray-700'
+                      }`}>
+                        <div className="font-medium">{player.name}</div>
+                        <div className="text-xs">
+                          {player.isHoldingButton && player.isBidding ? '입찰 중' : '대기'}
+                        </div>
+                        <div className={`text-xs ${
+                          displayTime <= 0 ? 'text-red-400' :
+                          displayTime <= 30 ? 'text-yellow-400' : 'text-gray-400'
+                        }`}>
+                          남은 시간: {formatTime(displayTime)}초
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
@@ -518,7 +558,7 @@ export default function Display() {
                                 <span className={`${
                                   bid.playerId === result.winnerId ? 'text-yellow-400 font-medium' : 'text-gray-400'
                                 }`}>
-                                  {index + 1}. {bid.playerName}
+                                  {bidIndex + 1}. {bid.playerName}
                                 </span>
                                 <span className="text-gray-500">
                                   {(bid.bidTime / 1000).toFixed(2)}s
