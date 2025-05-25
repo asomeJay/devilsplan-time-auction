@@ -31,6 +31,9 @@ export default function Game() {
     return displayTime.toFixed(1);
   };
 
+  // 시간 소진 여부 확인
+  const isTimeExhausted = remainingTime <= 0.01;
+
   // 게임 참여 알림
   useEffect(() => {
     if (!socket) return;
@@ -114,6 +117,15 @@ export default function Game() {
       setGameStatus('playing');
       setIsGameActive(true);
       setCountdown(-1);
+      
+      // 시간이 소진된 상태에서 게임이 시작되면 자동으로 포기 처리
+      if (isTimeExhausted) {
+        console.log('Player has no time remaining, automatically giving up');
+        setIsButtonPressed(false);
+        setIsParticipating(false);
+        setHasGivenUp(true);
+        return;
+      }
       
       // 서버에서 알려준 버튼을 누르고 있는 플레이어 목록에 내가 포함되어 있다면
       // 버튼을 누르고 있는 상태를 유지
@@ -206,10 +218,16 @@ export default function Game() {
       socket.off('game:timeUpdate');
       socket.off('game:updated');
     };
-  }, [socket, vibrate]);
+  }, [socket, vibrate, isTimeExhausted]);
 
   const handleButtonPress = () => {
     if (!socket || hasBid || hasGivenUp) return;
+    
+    // 게임 진행 중에 시간이 소진된 경우 버튼 누르기 불가
+    if (isGameActive && isTimeExhausted) {
+      console.log('Cannot press button - time exhausted during game');
+      return;
+    }
     
     console.log('Button pressed');
     setIsButtonPressed(true);
@@ -226,7 +244,8 @@ export default function Game() {
       isGameActive, 
       hasBid, 
       hasGivenUp,
-      isParticipating 
+      isParticipating,
+      isTimeExhausted 
     });
     
     // 카운트다운 중에 버튼을 놓으면 포기
@@ -266,8 +285,8 @@ export default function Game() {
           <div className="text-sm text-yellow-400">
             남은 시간: {formatTime(Math.max(0, remainingTime))}초
           </div>
-          <div className={`text-xs px-2 py-1 rounded ${remainingTime <= 0.01 ? 'bg-red-600' : 'bg-green-600'}`}>
-            {remainingTime <= 0.01 ? '시간 소진' : '사용 가능'}
+          <div className={`text-xs px-2 py-1 rounded ${isTimeExhausted ? 'bg-red-600' : 'bg-green-600'}`}>
+            {isTimeExhausted ? '시간 소진' : '사용 가능'}
           </div>
         </div>
         <div className="text-xs text-gray-300 mt-2">
@@ -299,16 +318,43 @@ export default function Game() {
               </div>
             )}
             
-            {hasGivenUp && gameStatus !== 'configuring' && gameStatus !== 'waiting' && (
+            {/* 시간 소진으로 자동 포기된 경우 */}
+            {hasGivenUp && isGameActive && isTimeExhausted && (
               <div className="space-y-4">
-                <div className="w-48 h-48 rounded-full bg-gray-600 flex items-center justify-center mx-auto">
+                <div className="w-48 h-48 rounded-full bg-red-700 flex items-center justify-center mx-auto border-4 border-red-500">
                   <div className="text-center">
-                    <div className="text-2xl font-bold">포기</div>
-                    <div className="text-lg">이번 라운드 불참</div>
+                    <div className="text-2xl font-bold text-red-200">시간 소진</div>
+                    <div className="text-lg text-red-300">자동 포기</div>
                   </div>
+                </div>
+                <div className="text-lg text-red-400">
+                  시간이 모두 소진되어 이번 라운드에서 자동으로 포기되었습니다
                 </div>
               </div>
             )}
+            
+            {/* 일반적인 포기 상태 */}
+            {hasGivenUp && !(isGameActive && isTimeExhausted) && gameStatus !== 'configuring' && gameStatus !== 'waiting' && (
+                <button
+                disabled={true}
+                className={`w-72 h-72 md:w-[28rem] md:h-[28rem] rounded-full text-4xl font-bold ${
+                    isButtonPressed && isParticipating
+                        ? (isTimeExhausted ? 'bg-orange-600 scale-95' : 'bg-red-600 scale-95')
+                        : isTimeExhausted && isGameActive
+                          ? 'bg-gray-500 cursor-not-allowed opacity-50'
+                          : isTimeExhausted
+                            ? 'bg-orange-600 hover:bg-orange-500'
+                            : 'bg-gray-700 hover:bg-gray-600'
+                }`}
+                style={{ maxWidth: '90vw', maxHeight: '60vh' }}
+              >
+                <div className="text-center">
+                  <div className="text-2xl font-bold">포기</div>
+                  <div className="text-lg">이번 라운드 불참</div>
+                </div>
+              </button>
+            )}
+            
             {!hasGivenUp && gameStatus !== 'configuring' && gameStatus !== 'waiting' && (
               <>
                 <div className="space-y-4">
@@ -318,9 +364,17 @@ export default function Game() {
                     </p>
                   )}
                   
-                  {remainingTime <= 0.01 && (
+                  {/* 시간 소진 경고 - 준비 단계에서는 참여 가능하다고 알림 */}
+                  {isTimeExhausted && !isGameActive && (
+                    <p className="text-sm mb-4 text-orange-400">
+                      ⚠️ 시간이 소진되었습니다. 준비 단계에는 참여할 수 있지만 게임이 시작되면 자동으로 포기됩니다.
+                    </p>
+                  )}
+                  
+                  {/* 시간 소진 경고 - 게임 진행 중에는 버튼 사용 불가 */}
+                  {isTimeExhausted && isGameActive && (
                     <p className="text-sm mb-4 text-red-400">
-                      ⚠️ 시간이 소진되었습니다. 버튼을 누를 수 있지만 추가 시간은 제한됩니다.
+                      ⚠️ 시간이 소진되어 더 이상 참여할 수 없습니다.
                     </p>
                   )}
                   
@@ -332,11 +386,15 @@ export default function Game() {
                     onMouseUp={handleButtonRelease}
                     className={`w-72 h-72 md:w-[28rem] md:h-[28rem] rounded-full text-4xl font-bold transition-all ${
                         isButtonPressed && isParticipating
-                            ? (remainingTime <= 0 ? 'bg-orange-600 scale-95' : 'bg-red-600 scale-95')
-                            : (remainingTime <= 0 ? 'bg-gray-600 hover:bg-gray-500' : 'bg-gray-700 hover:bg-gray-600')
+                            ? (isTimeExhausted ? 'bg-orange-600 scale-95' : 'bg-red-600 scale-95')
+                            : isTimeExhausted && isGameActive
+                              ? 'bg-gray-500 cursor-not-allowed opacity-50'
+                              : isTimeExhausted
+                                ? 'bg-orange-600 hover:bg-orange-500'
+                                : 'bg-gray-700 hover:bg-gray-600'
                     }`}
                     style={{ maxWidth: '90vw', maxHeight: '60vh' }}
-                    disabled={hasGivenUp}
+                    disabled={hasGivenUp || (isTimeExhausted && isGameActive)}
                   />
                 </div>
               </>

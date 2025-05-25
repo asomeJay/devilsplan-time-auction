@@ -234,41 +234,47 @@ export function setupSocketHandlers(io: Server) {
         timerService.stopTimer('global_timer');
         return;
       }      
-
+  
       // 현재 경과 시간 계산
       const currentTime = Date.now();
       const elapsedTime = (currentTime - currentGame.gameState.roundStartTime) / 1000; // 초 단위
-
-      // 시간이 소진된 플레이어들 자동 처리
+  
+      // 시간이 소진된 플레이어들 자동 처리 (입찰 완료)
       const autoCompleteResult = gameService.autoCompleteExpiredPlayers(currentGame);
-      
-      // 시간 소진으로 자동 입찰된 플레이어들이 있다면 알림
+
+      // 시간 소진으로 자동 입찰 완료된 플레이어들이 있다면 알림
       if (autoCompleteResult.expiredPlayers.length > 0) {
         autoCompleteResult.expiredPlayers.forEach(playerId => {
           const player = currentGame.players.find(p => p.id === playerId);
-          const bidTime = currentGame.gameState.currentBids.get(playerId);
           
-          if (player && bidTime) {
-            console.log(`플레이어 ${player.name} 시간 소진으로 자동 입찰 완료`);
+          if (player) {
+            // 해당 플레이어의 입찰 시간 가져오기
+            const bidTime = currentGame.gameState.currentBids.get(playerId);
             
-            // 해당 플레이어에게 자동 입찰 알림
+            console.log(`플레이어 ${player.name} 시간 소진으로 자동 입찰 완료 (${bidTime}ms)`);
+            
+            // 해당 플레이어에게 입찰 완료 알림
             io.to(playerId).emit('bid:confirmed', { 
               bidTime: bidTime,
               autoCompleted: true,
               reason: 'time_exhausted'
             });
             
-            // 다른 플레이어들에게 입찰 알림
+            // 다른 플레이어들에게 입찰 알림 (포기가 아닌 입찰 완료)
             io.to('global_game').emit('player:bid', {
               playerId: playerId,
               playerName: player.name,
               bidTime: bidTime,
-              autoCompleted: true
+              autoCompleted: true,
+              reason: 'time_exhausted'
             });
           }
         });
+        
+        // 게임 상태 업데이트 전송 (입찰 완료한 플레이어 상태 반영)
+        io.to('global_game').emit('game:updated', currentGame);
       }
-
+  
       // 자동 처리 후 라운드 종료 확인
       if (autoCompleteResult.shouldEndRound) {
         const roundResult = gameService.checkRoundEnd(currentGame);
@@ -280,7 +286,7 @@ export function setupSocketHandlers(io: Server) {
           return;
         }
       }
-
+  
       // 각 플레이어의 정확한 남은 시간 계산 (표시용)
       const playersWithEstimatedTime = currentGame.players.map(p => {
         let estimatedRemainingTime = p.remainingTime;
@@ -310,14 +316,14 @@ export function setupSocketHandlers(io: Server) {
           role: p.role
         };
       });
-
+  
       // 클라이언트에 현재 경과 시간과 플레이어 정보 전송
       io.to('global_game').emit('game:timeUpdate', {
         elapsedTime: elapsedTime,
         roundStartTime: currentGame.gameState.roundStartTime,
         players: playersWithEstimatedTime
       });
-
+  
       // 일반적인 라운드 종료 확인 (자동 처리가 없었던 경우)
       if (autoCompleteResult.expiredPlayers.length === 0) {
         const result = gameService.checkRoundEnd(currentGame);
