@@ -339,11 +339,7 @@ export default function Game() {
                 disabled={true}
                 className={`w-72 h-72 md:w-[28rem] md:h-[28rem] rounded-full text-4xl font-bold ${
                     isButtonPressed && isParticipating
-                        ? (isTimeExhausted ? 'bg-orange-600 scale-95' : 'bg-red-600 scale-95')
-                        : isTimeExhausted && isGameActive
-                          ? 'bg-gray-500 cursor-not-allowed opacity-50'
-                          : isTimeExhausted
-                            ? 'bg-orange-600 hover:bg-orange-500'
+                            ? 'bg-red-600 scale-95'
                             : 'bg-gray-700 hover:bg-gray-600'
                 }`}
                 style={{ maxWidth: '90vw', maxHeight: '60vh' }}
@@ -355,26 +351,12 @@ export default function Game() {
               </button>
             )}
             
-            {!hasGivenUp && gameStatus !== 'configuring' && gameStatus !== 'waiting' && (
+            {!hasGivenUp && gameStatus !== 'configuring' && gameStatus !== 'waiting' && gameStatus !== 'ended' && (
               <>
                 <div className="space-y-4">
                   {gameStatus=='prepare' && countdown === -1 && (
                     <p className="text-lg mb-4 text-yellow-400">
                       모든 플레이어가 버튼을 누르면 5초 카운트다운이 시작됩니다
-                    </p>
-                  )}
-                  
-                  {/* 시간 소진 경고 - 준비 단계에서는 참여 가능하다고 알림 */}
-                  {isTimeExhausted && !isGameActive && (
-                    <p className="text-sm mb-4 text-orange-400">
-                      ⚠️ 시간이 소진되었습니다. 준비 단계에는 참여할 수 있지만 게임이 시작되면 자동으로 포기됩니다.
-                    </p>
-                  )}
-                  
-                  {/* 시간 소진 경고 - 게임 진행 중에는 버튼 사용 불가 */}
-                  {isTimeExhausted && isGameActive && (
-                    <p className="text-sm mb-4 text-red-400">
-                      ⚠️ 시간이 소진되어 더 이상 참여할 수 없습니다.
                     </p>
                   )}
                   
@@ -386,12 +368,8 @@ export default function Game() {
                     onMouseUp={handleButtonRelease}
                     className={`w-72 h-72 md:w-[28rem] md:h-[28rem] rounded-full text-4xl font-bold transition-all ${
                         isButtonPressed && isParticipating
-                            ? (isTimeExhausted ? 'bg-orange-600 scale-95' : 'bg-red-600 scale-95')
-                            : isTimeExhausted && isGameActive
-                              ? 'bg-gray-500 cursor-not-allowed opacity-50'
-                              : isTimeExhausted
-                                ? 'bg-orange-600 hover:bg-orange-500'
-                                : 'bg-gray-700 hover:bg-gray-600'
+                            ? 'bg-red-600 scale-95'
+                            : 'bg-gray-700 hover:bg-gray-600'
                     }`}
                     style={{ maxWidth: '90vw', maxHeight: '60vh' }}
                     disabled={hasGivenUp || (isTimeExhausted && isGameActive)}
@@ -426,7 +404,7 @@ export default function Game() {
                 <div className="space-y-2">
                 <p className="text-xl">낙찰자: {roundResult.winnerName}</p>
                 <p className="text-lg text-gray-400">
-                    낙찰 시간: {roundResult.winTime?.toFixed(3)}초
+                    낙찰 시간: {roundResult.winTime?.toFixed(2)}초
                 </p>
                 </div>
             </div>
@@ -439,39 +417,6 @@ export default function Game() {
             </div>
             </div>
         </div>
-        )}
-
-        {gameStatus === 'ended' && finalResults && (
-          <div className="text-center w-full">
-            <h2 className="text-4xl font-bold mb-4">🏆 게임 종료!</h2>
-            
-            {/* 최종 결과 */}
-            <div className="space-y-4">
-              <div className="bg-yellow-600 p-4 rounded-lg">
-                <h3 className="text-2xl font-bold mb-2">🥇 최종 우승자</h3>
-                <div className="text-xl">{finalResults.winner.name}</div>
-                <div className="text-sm text-yellow-200">총 {finalResults.winner.wins}승</div>
-              </div>
-              
-              {/* 내 순위 */}
-              <div className="bg-gray-700 p-4 rounded-lg">
-                <h3 className="text-lg font-bold mb-2">내 결과</h3>
-                <div className="text-lg">총 {wins}승</div>
-                <div className="text-sm text-gray-400">
-                  순위: {finalResults.allPlayers.findIndex((p: any) => p.id === socket?.id) + 1}위
-                </div>
-              </div>
-              
-              <div className="mt-6">
-                <button
-                  onClick={() => window.location.href = '/'}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium"
-                >
-                  홈으로 돌아가기
-                </button>
-              </div>
-            </div>
-          </div>
         )}
       </div>
     </div>

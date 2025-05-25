@@ -6,6 +6,7 @@ export class GameStateService {
 
   createOrJoinGame(playerId: string, playerName: string, role: 'player' | 'display'): GlobalGame {
     // 글로벌 게임이 없으면 생성
+
     if (!this.globalGame) {
       const initialTime = 600; // 정확히 600초로 설정
       

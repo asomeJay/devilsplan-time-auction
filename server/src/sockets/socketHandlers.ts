@@ -16,7 +16,11 @@ export function setupSocketHandlers(io: Server) {
       console.log('게임 참가 요청:', { socketId: socket.id, playerName, role });
       
       const game = gameStateService.createOrJoinGame(socket.id, playerName, role);
-      
+      // game 의 display role 인 플레이어를 host 로 한다
+      const host = game.players.find(p => p.role === 'display');
+      if (host) {
+        game.hostId = host.id;
+      } 
       if (game) {
         console.log('게임 참가 성공:', { playerId: socket.id, playerName });
         socket.join('global_game');
