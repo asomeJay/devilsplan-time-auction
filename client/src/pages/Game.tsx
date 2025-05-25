@@ -403,35 +403,42 @@ export default function Game() {
         )}
 
         {gameStatus === 'roundEnd' && roundResult && (
-          <div className="text-center w-full">
-            <h2 className="text-4xl font-bold mb-4">
-              {roundResult.winnerId === socket?.id 
-                ? '🎉 낙찰!' 
-                : roundResult.isDraw 
-                  ? '⚖️ 유찰' 
-                  : '❌ 실패'}
-            </h2>
-            {roundResult.winnerName && (
-              <div className="space-y-2">
+        <div className="text-center w-full">
+            {roundResult.isDraw ? (
+            <div className="space-y-4">
+                {/* 유찰 아이콘과 메시지 */}
+                <div className="text-6xl mb-4">
+                    ⚖️
+                </div>
+                <h2 className="text-4xl font-bold mb-4">
+                유찰
+                </h2>
+            </div>
+            ) : (
+            <div className="space-y-4">
+                {/* 낙찰 성공 */}
+                <h2 className="text-4xl font-bold mb-4">
+                {roundResult.winnerId === socket?.id 
+                    ? '🎉 낙찰 성공!' 
+                    : '❌ 낙찰 실패'}
+                </h2>
+                
+                <div className="space-y-2">
                 <p className="text-xl">낙찰자: {roundResult.winnerName}</p>
                 <p className="text-lg text-gray-400">
-                  입찰 시간: {roundResult.winTime?.toFixed(2)}초
+                    낙찰 시간: {roundResult.winTime?.toFixed(3)}초
                 </p>
-              </div>
-            )}
-            {roundResult.isDraw && (
-              <p className="text-lg text-gray-400">
-                아무도 입찰하지 않았습니다
-              </p>
+                </div>
+            </div>
             )}
             
             {/* 다음 라운드 대기 메시지 */}
             <div className="mt-8">
-              <div className="text-lg text-yellow-400">
+            <div className="text-lg text-yellow-400">
                 호스트가 다음 라운드를 시작하기를 기다리는 중...
-              </div>
             </div>
-          </div>
+            </div>
+        </div>
         )}
 
         {gameStatus === 'ended' && finalResults && (

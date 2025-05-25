@@ -368,9 +368,6 @@ export default function Display() {
                 <div>
                   <div className="text-6xl mb-4">⚖️</div>
                   <div className="text-4xl">유찰</div>
-                  <div className="text-2xl text-gray-400">
-                    아무도 입찰하지 않았습니다
-                  </div>
                 </div>
               ) : (
                 <div>
@@ -547,7 +544,10 @@ export default function Display() {
                           {result.winTime?.toFixed(2)}초
                         </span>
                       </p>
+                      </div>
                       
+                  )}
+                  <div>
                       {result.bids && result.bids.length > 0 && (
                         <div className="mt-2 space-y-1">
                           <p className="text-xs font-medium text-gray-300">입찰 순위:</p>
@@ -568,7 +568,6 @@ export default function Display() {
                         </div>
                       )}
                     </div>
-                  )}
                 </div>
               ))}
             </div>

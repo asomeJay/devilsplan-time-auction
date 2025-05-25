@@ -89,8 +89,7 @@ export class GameService {
     return { shouldStartCountdown: false, game };
   }
 
-  // 시간이 소진된 플레이어를 자동으로 입찰 완료 처리 (포기가 아님)
-autoCompleteExpiredPlayers(game: GlobalGame): { expiredPlayers: string[], shouldEndRound: boolean } {
+  autoCompleteExpiredPlayers(game: GlobalGame): { expiredPlayers: string[], shouldEndRound: boolean } {
     if (!game.gameState.commonTimerStarted || !game.gameState.roundStartTime) {
       return { expiredPlayers: [], shouldEndRound: false };
     }
@@ -98,25 +97,20 @@ autoCompleteExpiredPlayers(game: GlobalGame): { expiredPlayers: string[], should
     const currentTime = Date.now();
     const expiredPlayers: string[] = [];
     
-    // 현재 입찰 중인 플레이어들만 확인 (이미 입찰 완료했거나 포기한 플레이어는 제외)
+    // 현재 입찰 중인 플레이어들만 확인
     const activeBiddingPlayers = game.players.filter(p => 
       p.role === 'player' && 
       p.isBidding && 
       p.isHoldingButton &&
-      !game.gameState.currentBids.has(p.id) // 이미 입찰 완료한 플레이어는 제외
+      !game.gameState.currentBids.has(p.id)
     );
   
     console.log('시간 소진 체크:', {
       totalPlayers: game.players.filter(p => p.role === 'player').length,
       activeBiddingPlayers: activeBiddingPlayers.length,
       playersWithBids: game.gameState.currentBids.size,
-      activeBiddingPlayerDetails: activeBiddingPlayers.map(p => ({
-        name: p.name,
-        remainingTime: p.remainingTime,
-        isHoldingButton: p.isHoldingButton,
-        isBidding: p.isBidding,
-        hasBidRecorded: game.gameState.currentBids.has(p.id)
-      }))
+      timestamp: currentTime,
+      roundStartTime: game.gameState.roundStartTime
     });
   
     activeBiddingPlayers.forEach(player => {
@@ -126,28 +120,32 @@ autoCompleteExpiredPlayers(game: GlobalGame): { expiredPlayers: string[], should
       // 이번 입찰에서 실제 사용한 시간 계산 (초 단위)
       const timeUsedThisPress = (currentTime - buttonPressStartTime) / 1000;
       
-      // 플레이어의 남은 시간을 초과했는지 확인 (0.01초 오차 허용)
-      if (timeUsedThisPress > (player.remainingTime + 0.01)) {
+      // 플레이어의 남은 시간을 초과했는지 확인 (더 엄격한 기준 적용)
+      const timeExceeded = timeUsedThisPress > (player.remainingTime + 0.001); // 1ms 오차만 허용
+      
+      if (timeExceeded) {
         console.log(`플레이어 ${player.name} 시간 소진 - 자동 입찰 완료 처리:`, {
-          timeUsedThisPress,
-          remainingTime: player.remainingTime,
-          difference: timeUsedThisPress - player.remainingTime
+          timeUsedThisPress: timeUsedThisPress.toFixed(3),
+          remainingTime: player.remainingTime.toFixed(3),
+          difference: (timeUsedThisPress - player.remainingTime).toFixed(3),
+          buttonPressStartTime,
+          currentTime,
+          exactTimeUsed: timeUsedThisPress
         });
         
         expiredPlayers.push(player.id);
         
-        // 시간 소진으로 자동 입찰 완료 처리 (포기가 아님)
-        // 입찰 시간은 플레이어의 남은 시간으로 제한
-        const effectiveBidTime = player.remainingTime * 1000; // 밀리초로 변환
+        // 정확한 입찰 시간 계산: 플레이어의 남은 시간으로 제한
+        const effectiveBidTime = Math.floor(player.remainingTime * 1000); // 밀리초로 변환하고 정수화
         game.gameState.currentBids.set(player.id, effectiveBidTime);
         
         // 플레이어 상태 업데이트
         player.isHoldingButton = false;
         player.isBidding = false;
-        player.remainingTime = 0; // 정확히 0으로 설정
+        player.remainingTime = 0;
         game.gameState.buttonPressStartTimes.delete(player.id);
         
-        console.log(`플레이어 ${player.name} 시간 소진으로 자동 입찰 완료 (입찰시간: ${effectiveBidTime}ms)`);
+        console.log(`플레이어 ${player.name} 시간 소진으로 자동 입찰 완료 (정확한 입찰시간: ${effectiveBidTime}ms)`);
       }
     });
   
@@ -407,22 +405,22 @@ autoCompleteExpiredPlayers(game: GlobalGame): { expiredPlayers: string[], should
     const biddedPlayers = activePlayers.filter(p => 
       game.gameState.currentBids.has(p.id)
     );
-
+  
     // 모든 입찰 정보 수집
     const bids = biddedPlayers.map(player => ({
       playerId: player.id,
       playerName: player.name,
       bidTime: game.gameState.currentBids.get(player.id) || 0
     }));
-
+  
     console.log('라운드 결과 계산:', {
       totalPlayers: activePlayers.length,
       biddedPlayers: biddedPlayers.length,
       bids: bids.map(b => ({ name: b.playerName, time: b.bidTime }))
     });
-
+  
     let result: RoundResult;
-
+  
     if (biddedPlayers.length === 0) {
       // 아무도 입찰하지 않은 경우 - 유찰
       result = {
@@ -432,37 +430,74 @@ autoCompleteExpiredPlayers(game: GlobalGame): { expiredPlayers: string[], should
       };
       console.log('유찰 - 아무도 입찰하지 않음');
     } else {
-      // 가장 늦게 입찰한 플레이어 찾기 (가장 큰 bidTime)
-      let latestBidder = biddedPlayers[0];
-      let latestBidTime = game.gameState.currentBids.get(latestBidder.id) || 0;
-
-      biddedPlayers.forEach(player => {
+      // 가장 늦게 입찰한 시간 찾기
+      const maxBidTime = Math.max(...bids.map(bid => bid.bidTime));
+      
+      // 가장 늦게 입찰한 플레이어들 찾기 (동점자 포함)
+      const winnersWithMaxTime = biddedPlayers.filter(player => {
         const bidTime = game.gameState.currentBids.get(player.id) || 0;
-        if (bidTime > latestBidTime) {
-          latestBidder = player;
-          latestBidTime = bidTime;
-        }
+        return Math.abs(bidTime - maxBidTime) < 1; // 1ms 오차 허용
       });
-
-      // 승리자의 승수 증가
-      latestBidder.wins++;
-
-      result = {
-        round: game.gameState.currentRound,
-        winnerId: latestBidder.id,
-        winnerName: latestBidder.name,
-        winTime: latestBidTime / 1000, // 밀리초를 초로 변환
-        isDraw: false,
-        bids
-      };
-
-      console.log(`승리자: ${latestBidder.name}, 입찰 시간: ${latestBidTime}ms`);
+  
+      console.log('최대 입찰 시간:', maxBidTime, '동점자 수:', winnersWithMaxTime.length);
+  
+      if (winnersWithMaxTime.length > 1) {
+        // 동점인 경우 - 유찰 처리
+        result = {
+          round: game.gameState.currentRound,
+          isDraw: true,
+          bids,
+        };
+        console.log(`동점 유찰 - ${winnersWithMaxTime.length}명이 ${(maxBidTime/1000).toFixed(3)}초로 동점`);
+      } else {
+        // 단독 승리자
+        const winner = winnersWithMaxTime[0];
+        winner.wins++;
+  
+        result = {
+          round: game.gameState.currentRound,
+          winnerId: winner.id,
+          winnerName: winner.name,
+          winTime: maxBidTime / 1000, // 밀리초를 초로 변환
+          isDraw: false,
+          bids
+        };
+  
+        console.log(`승리자: ${winner.name}, 입찰 시간: ${maxBidTime}ms`);
+      }
     }
-
+  
     // 라운드 결과를 히스토리에 저장
     game.gameState.roundHistory.push(result);
     
     return result;
+  }
+
+  // 추가: 동점 상황을 더 명확하게 감지하는 헬퍼 함수
+private checkForTiedPlayers(bids: Array<{playerId: string, playerName: string, bidTime: number}>): {
+    hasTie: boolean;
+    maxTime: number;
+    tiedPlayers: Array<{playerId: string, playerName: string, bidTime: number}>;
+    winnerCount: number;
+  } {
+    if (bids.length === 0) {
+      return {
+        hasTie: false,
+        maxTime: 0,
+        tiedPlayers: [],
+        winnerCount: 0
+      };
+    }
+  
+    const maxTime = Math.max(...bids.map(bid => bid.bidTime));
+    const tiedPlayers = bids.filter(bid => Math.abs(bid.bidTime - maxTime) < 1);
+    
+    return {
+      hasTie: tiedPlayers.length > 1,
+      maxTime,
+      tiedPlayers,
+      winnerCount: tiedPlayers.length
+    };
   }
 
   // 시간 초과로 라운드 종료 (입찰하지 않은 플레이어들은 자동 탈락)

@@ -130,43 +130,120 @@ export function setupSocketHandlers(io: Server) {
       const result = gameService.endButtonPress(socket.id);
       const game = gameStateService.getGame();
       io.to('global_game').emit('game:updated', game);
+      
       if (result && game) {
         const player = game.players.find(p => p.id === socket.id);
         
         if (result.isGiveUp) {
           // 포기한 경우
-          console.log('플레이어 포기:', { playerId: socket.id, playerName: player?.name });
+          console.log('플레이어 포기:', { 
+            playerId: socket.id, 
+            playerName: player?.name,
+            remainingTime: player?.remainingTime
+          });
           socket.emit('player:giveup');
-          
-          // 다른 플레이어들에게 포기 알림
           socket.to('global_game').emit('player:gaveup', {
             playerId: socket.id,
             playerName: player?.name || 'Unknown'
           });
-          
-          
           io.to('global_game').emit('game:updated', game);
-        }
-        else if (result.bidTime !== undefined) {
+          
+        } else if (result.bidTime !== undefined) {
           // 입찰한 경우
           console.log('플레이어 입찰 완료:', { 
             playerId: socket.id, 
             playerName: player?.name, 
-            bidTime: result.bidTime 
+            bidTime: result.bidTime,
+            bidTimeSeconds: (result.bidTime / 1000).toFixed(3),
+            remainingTimeAfter: player?.remainingTime
           });
-          socket.emit('bid:confirmed', { bidTime: result.bidTime });
           
-          // 다른 플레이어들에게 입찰 알림
+          socket.emit('bid:confirmed', { bidTime: result.bidTime });
           socket.to('global_game').emit('player:bid', {
             playerId: socket.id,
             playerName: player?.name || 'Unknown',
             bidTime: result.bidTime
           });
           
+          // === 동점 가능성 실시간 체크 ===
+          const currentBids = Array.from(game.gameState.currentBids.entries()).map(([id, time]) => {
+            const p = game.players.find(pl => pl.id === id);
+            return {
+              playerId: id,
+              playerName: p?.name || 'Unknown',
+              bidTime: time
+            };
+          });
+          
+          if (currentBids.length >= 2) {
+            // 현재까지의 입찰 중 동점이 있는지 확인
+            const maxTime = Math.max(...currentBids.map(b => b.bidTime));
+            const playersAtMaxTime = currentBids.filter(b => Math.abs(b.bidTime - maxTime) < 1);
+            
+            if (playersAtMaxTime.length > 1) {
+              console.log('⚠️  동점 상황 감지!');
+              console.log(`현재 최고 입찰 시간: ${(maxTime/1000).toFixed(3)}초`);
+              console.log(`동점자 수: ${playersAtMaxTime.length}명`);
+              playersAtMaxTime.forEach((p, index) => {
+                console.log(`  ${index + 1}. ${p.playerName}: ${(p.bidTime/1000).toFixed(3)}초`);
+              });
+              console.log('※ 추가 입찰이 없으면 이 라운드는 동점 유찰 처리됩니다');
+            }
+          }
+          
           // 입찰 후 즉시 라운드 종료 확인
           const roundResult = gameService.checkRoundEnd(game);
           if (roundResult) {
-            console.log('라운드 종료:', { roundResult });
+            console.log('=== 라운드 종료 트리거 ===');
+            console.log('트리거 원인: 플레이어 입찰 완료');
+            console.log('라운드 결과:', {
+              round: roundResult.round,
+              isDraw: roundResult.isDraw,
+              winnerId: roundResult.winnerId,
+              winnerName: roundResult.winnerName,
+              winTime: roundResult.winTime,
+              totalBids: roundResult.bids.length
+            });
+            
+            // 동점 상황 상세 로깅
+            if (roundResult.isDraw) {
+              const maxTime = Math.max(...roundResult.bids.map(b => b.bidTime));
+              const tiedPlayers = roundResult.bids.filter(b => Math.abs(b.bidTime - maxTime) < 1);
+              
+              console.log('🏆 동점 유찰 확정!');
+              console.log(`동점 시간: ${(maxTime/1000).toFixed(3)}초`);
+              console.log(`동점자 ${tiedPlayers.length}명:`);
+              tiedPlayers.forEach((p, index) => {
+                console.log(`  ${index + 1}. ${p.playerName} (${(p.bidTime/1000).toFixed(3)}초)`);
+              });
+              
+              // 동점이 아닌 다른 입찰자들도 표시
+              const nonTiedPlayers = roundResult.bids.filter(b => Math.abs(b.bidTime - maxTime) >= 1);
+              if (nonTiedPlayers.length > 0) {
+                console.log('기타 입찰자:');
+                nonTiedPlayers
+                  .sort((a, b) => b.bidTime - a.bidTime)
+                  .forEach((p, index) => {
+                    console.log(`  ${index + 1}. ${p.playerName} (${(p.bidTime/1000).toFixed(3)}초)`);
+                  });
+              }
+            } else {
+              console.log('🏆 단독 승리 확정!');
+              console.log(`승리자: ${roundResult.winnerName} (${roundResult.winTime?.toFixed(3)}초)`);
+              
+              if (roundResult.bids.length > 1) {
+                console.log('전체 순위:');
+                roundResult.bids
+                  .sort((a, b) => b.bidTime - a.bidTime)
+                  .forEach((bid, index) => {
+                    const isWinner = bid.playerId === roundResult.winnerId;
+                    console.log(`  ${index + 1}위: ${bid.playerName} (${(bid.bidTime/1000).toFixed(3)}초) ${isWinner ? '👑' : ''}`);
+                  });
+              }
+            }
+            
+            console.log('=========================');
+            
             // 타이머 중지
             timerService.stopTimer('global_timer');
             stopCurrentCountdown();
@@ -176,7 +253,7 @@ export function setupSocketHandlers(io: Server) {
           }
         }
       }
-    });
+    });    
 
     // 플레이어 준비 토글
     socket.on('player:toggleReady', () => {
