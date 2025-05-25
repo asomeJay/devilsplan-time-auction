@@ -216,14 +216,6 @@ export class GameService {
       return { isGiveUp: true };
     }
   
-    console.log(`플레이어 ${player.name} 버튼 릴리즈. 현재 상태:`, {
-      isHoldingButton: player.isHoldingButton,
-      isBidding: player.isBidding,
-      remainingTime: player.remainingTime,
-      isWaitingForCountdown: game.gameState.isWaitingForCountdown,
-      commonTimerStarted: game.gameState.commonTimerStarted
-    });
-
     // 카운트다운 중에 손을 뗀 경우 = 입찰 포기
     if (game.gameState.isWaitingForCountdown && game.gameState.countdownStartTime) {
       player.isHoldingButton = false;
@@ -288,14 +280,6 @@ export class GameService {
       player.isHoldingButton = false;
       player.isBidding = false;
       game.gameState.buttonPressStartTimes.delete(playerId);
-      
-      console.log(`플레이어 ${player.name} 입찰 완료:`, {
-        actualBidTime: actualBidTime,
-        timeUsedThisPress: timeUsedThisPress,
-        effectiveBidTime: effectiveBidTime,
-        timeExhausted: playerTimeExhausted,
-        remainingTimeAfter: player.remainingTime
-      });
       
       return { 
         bidTime: effectiveBidTime, 
@@ -384,12 +368,6 @@ export class GameService {
     // 아직 입찰 중인 플레이어들 (버튼을 누르고 있는 플레이어들)
     const playersStillBidding = activePlayers.filter(p => p.isBidding || p.isHoldingButton);
     
-    console.log(`라운드 종료 체크:`, {
-      totalPlayers: activePlayers.length,
-      stillBidding: playersStillBidding.length,
-      bidsReceived: game.gameState.currentBids.size
-    });
-    
     // 모든 플레이어가 입찰을 완료했거나 포기한 경우
     if (playersStillBidding.length === 0) {
       return this.determineRoundWinner(game);
@@ -412,13 +390,7 @@ export class GameService {
       playerName: player.name,
       bidTime: game.gameState.currentBids.get(player.id) || 0
     }));
-  
-    console.log('라운드 결과 계산:', {
-      totalPlayers: activePlayers.length,
-      biddedPlayers: biddedPlayers.length,
-      bids: bids.map(b => ({ name: b.playerName, time: b.bidTime }))
-    });
-  
+
     let result: RoundResult;
   
     if (biddedPlayers.length === 0) {
@@ -468,36 +440,19 @@ export class GameService {
     }
   
     // 라운드 결과를 히스토리에 저장
-    game.gameState.roundHistory.push(result);
+
+    const existingRound = game.gameState.roundHistory.find(
+      h => h.round === result.round
+    );
+    
+    if (!existingRound) {
+      game.gameState.roundHistory.push(result);
+      console.log(`라운드 ${result.round} 결과를 히스토리에 추가`);
+    } else {
+      console.log(`라운드 ${result.round} 이미 히스토리에 존재 - 추가하지 않음`);
+    }
     
     return result;
-  }
-
-  // 추가: 동점 상황을 더 명확하게 감지하는 헬퍼 함수
-private checkForTiedPlayers(bids: Array<{playerId: string, playerName: string, bidTime: number}>): {
-    hasTie: boolean;
-    maxTime: number;
-    tiedPlayers: Array<{playerId: string, playerName: string, bidTime: number}>;
-    winnerCount: number;
-  } {
-    if (bids.length === 0) {
-      return {
-        hasTie: false,
-        maxTime: 0,
-        tiedPlayers: [],
-        winnerCount: 0
-      };
-    }
-  
-    const maxTime = Math.max(...bids.map(bid => bid.bidTime));
-    const tiedPlayers = bids.filter(bid => Math.abs(bid.bidTime - maxTime) < 1);
-    
-    return {
-      hasTie: tiedPlayers.length > 1,
-      maxTime,
-      tiedPlayers,
-      winnerCount: tiedPlayers.length
-    };
   }
 
   // 시간 초과로 라운드 종료 (입찰하지 않은 플레이어들은 자동 탈락)
@@ -524,6 +479,8 @@ private checkForTiedPlayers(bids: Array<{playerId: string, playerName: string, b
       return b.remainingTime - a.remainingTime;
     });
 
+    game.gameState.status = 'ended';
+    
     return {
       winner: sortedPlayers[0],
       loser: sortedPlayers[sortedPlayers.length - 1],

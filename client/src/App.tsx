@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import Game from './pages/Game';
 import Display from './pages/Display';
+import Results from './pages/Results';
 import { SocketProvider } from './contexts/SocketContext';
 
 function App() {
@@ -14,6 +15,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/game" element={<Game />} />
             <Route path="/display" element={<Display />} />
+            <Route path="/results" element={<Results />} />
           </Routes>
         </div>
       </Router>

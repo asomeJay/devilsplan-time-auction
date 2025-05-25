@@ -1,38 +1,20 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSocket } from '../contexts/SocketContext';
-import { useVibration } from '../hooks/useVibration';
 
 export default function Game() {
   const { socket } = useSocket();
-  const vibrate = useVibration();
   
   const [gameStatus, setGameStatus] = useState('waiting');
-  const [currentRound, setCurrentRound] = useState(1);
   const [countdown, setCountdown] = useState(-1);
   const [isButtonPressed, setIsButtonPressed] = useState(false);
   const [isGameActive, setIsGameActive] = useState(false);
   const [hasBid, setHasBid] = useState(false);
   const [hasGivenUp, setHasGivenUp] = useState(false);
   const [roundResult, setRoundResult] = useState<any>(null);
-  const [wins, setWins] = useState(0);
-  const [socketConnected, setSocketConnected] = useState(false);
-  const [lastEvent, setLastEvent] = useState('none');
-  const [isParticipating, setIsParticipating] = useState(false); // 현재 라운드 참여 여부
-  const [finalResults, setFinalResults] = useState<any>(null);
-  const [remainingTime, setRemainingTime] = useState(600); // 플레이어의 남은 시간
-  const [elapsedTime, setElapsedTime] = useState(0); // 라운드 경과 시간
+  const [isParticipating, setIsParticipating] = useState(false);
+  const [isBidding, setIsBidding] = useState(false); // 입찰 진행 중 상태 추가
   
   const buttonRef = useRef<HTMLButtonElement>(null);
-
-  // 정확한 시간 표시를 위한 헬퍼 함수
-  const formatTime = (time: number): string => {
-    // 0.01초 미만은 0으로 표시
-    const displayTime = time < 0.01 ? 0 : time;
-    return displayTime.toFixed(1);
-  };
-
-  // 시간 소진 여부 확인
-  const isTimeExhausted = remainingTime <= 0.01;
 
   // 게임 참여 알림
   useEffect(() => {
@@ -40,7 +22,6 @@ export default function Game() {
     
     console.log('Joining game');
     socket.emit('game:rejoin');
-    
   }, [socket]);
 
   // 모바일 뷰포트 높이 조정
@@ -60,75 +41,33 @@ export default function Game() {
     };
   }, []);
 
-  // 소켓 연결 상태 확인
-  useEffect(() => {
-    if (!socket) return;
-    
-    const handleConnect = () => {
-      console.log('Socket connected');
-      setSocketConnected(true);
-    };
-    
-    const handleDisconnect = () => {
-      console.log('Socket disconnected');
-      setSocketConnected(false);
-    };
-    
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
-    
-    setSocketConnected(socket.connected);
-    
-    return () => {
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
-    };
-  }, [socket]);
-
   useEffect(() => {
     if (!socket) return;
 
     socket.on('round:prepare', (round: number) => {
       console.log('Received round:prepare event', round);
-      setLastEvent('round:prepare');
-      setCurrentRound(round);
       setGameStatus('prepare');
       setRoundResult(null);
       setHasBid(false);
       setHasGivenUp(false);
       setIsGameActive(false);
       setIsButtonPressed(false);
-      setIsParticipating(false); // 새 라운드 시작 시 참여 상태 초기화
+      setIsParticipating(false);
+      setIsBidding(false); // 입찰 상태 초기화
       setCountdown(5);
     });
 
     socket.on('game:countdown', (seconds: number) => {
       console.log('Received game:countdown event', seconds);
-      setLastEvent('game:countdown');
       setCountdown(seconds);
-      if (seconds === 5) {
-        vibrate(100);
-      }
     });
 
     socket.on('round:started', (data: { playersStillHolding: string[] }) => {
       console.log('Received round:started event', data);
-      setLastEvent('round:started');
       setGameStatus('playing');
       setIsGameActive(true);
       setCountdown(-1);
       
-      // 시간이 소진된 상태에서 게임이 시작되면 자동으로 포기 처리
-      if (isTimeExhausted) {
-        console.log('Player has no time remaining, automatically giving up');
-        setIsButtonPressed(false);
-        setIsParticipating(false);
-        setHasGivenUp(true);
-        return;
-      }
-      
-      // 서버에서 알려준 버튼을 누르고 있는 플레이어 목록에 내가 포함되어 있다면
-      // 버튼을 누르고 있는 상태를 유지
       if (data.playersStillHolding && socket.id && data.playersStillHolding.includes(socket.id)) {
         console.log('Player is still holding button, maintaining pressed state');
         setIsButtonPressed(true);
@@ -143,65 +82,41 @@ export default function Game() {
 
     socket.on('bid:confirmed', (data: { bidTime: number, autoCompleted?: boolean, reason?: string }) => {
       console.log('Received bid:confirmed event', data);
-      setLastEvent('bid:confirmed');
       setHasBid(true);
       setIsButtonPressed(false);
       setIsGameActive(false);
       setIsParticipating(false);
-      vibrate(50);
+    //   setIsBidding(false); // 입찰 완료
     });
 
     socket.on('player:giveup', () => {
       console.log('Received player:giveup event');
-      setLastEvent('player:giveup');
       setHasGivenUp(true);
       setIsButtonPressed(false);
       setIsParticipating(false);
-      vibrate(30);
+      setIsBidding(false);
     });
 
     socket.on('round:ended', (result: any) => {
       console.log('Received round:ended event', result);
-      setLastEvent('round:ended');
       setRoundResult(result);
       setGameStatus('roundEnd');
       setIsGameActive(false);
       setIsButtonPressed(false);
       setIsParticipating(false);
-      
-      if (result.winnerId === socket.id) {
-        setWins(prev => prev + 1);
-        vibrate([100, 50, 100]);
-      }
+      setIsBidding(false);
     });
 
     socket.on('game:ended', (results: any) => {
       console.log('Received game:ended event', results);
-      setLastEvent('game:ended');
       setGameStatus('ended');
-      setFinalResults(results);
       setIsGameActive(false);
       setIsButtonPressed(false);
       setIsParticipating(false);
+      setIsBidding(false);
     });
 
-    socket.on('game:timeUpdate', (data: { elapsedTime: number, roundStartTime: number, players?: any[] }) => {
-      setElapsedTime(data.elapsedTime);
-      
-      // 내 플레이어 정보 업데이트 (시간 정보)
-      if (data.players && socket.id) {
-        const myPlayer = data.players.find(p => p.id === socket.id);
-        if (myPlayer) {
-          // 0.01초 미만은 0으로 설정
-          const displayTime = myPlayer.remainingTime < 0.01 ? 0 : myPlayer.remainingTime;
-          setRemainingTime(displayTime);
-        }
-      }
-    });
-
-    // 게임 상태 업데이트 (상태 동기화만)
     socket.on('game:updated', (game: any) => {
-      // 게임 상태 동기화만 수행
       if (game.gameState?.status) {
         setGameStatus(game.gameState.status);
       }
@@ -215,29 +130,21 @@ export default function Game() {
       socket.off('player:giveup');
       socket.off('round:ended');
       socket.off('game:ended');
-      socket.off('game:timeUpdate');
       socket.off('game:updated');
     };
-  }, [socket, vibrate, isTimeExhausted]);
+  }, [socket]);
 
   const handleButtonPress = () => {
-    if (!socket || hasBid || hasGivenUp) return;
-    
-    // 게임 진행 중에 시간이 소진된 경우 버튼 누르기 불가
-    if (isGameActive && isTimeExhausted) {
-      console.log('Cannot press button - time exhausted during game');
-      return;
-    }
+    if (!socket || hasBid || hasGivenUp || isBidding) return;
     
     console.log('Button pressed');
     setIsButtonPressed(true);
     setIsParticipating(true);
     socket.emit('button:press');
-    vibrate(50);
   };
 
   const handleButtonRelease = () => {
-    if (!socket || !isButtonPressed || !isParticipating) return;
+    if (!socket || !isButtonPressed || !isParticipating || isBidding) return;
     
     console.log('Button release', { 
       countdown, 
@@ -245,7 +152,7 @@ export default function Game() {
       hasBid, 
       hasGivenUp,
       isParticipating,
-      isTimeExhausted 
+      isBidding
     });
     
     // 카운트다운 중에 버튼을 놓으면 포기
@@ -254,16 +161,13 @@ export default function Game() {
       socket.emit('button:release');
       setIsButtonPressed(false);
       setIsParticipating(false);
-      vibrate(30);
     }
     // 입찰 단계에서 버튼을 놓으면 입찰 완료
     else if (isGameActive && isParticipating && !hasBid && !hasGivenUp) {
       console.log('Placing bid');
-      setIsButtonPressed(false);
-      setIsParticipating(false);
+      setIsBidding(true); // 입찰 진행 중 상태로 변경
+      // 버튼 상태는 서버 응답 후에만 변경
       socket.emit('button:release');
-      vibrate(30);
-      // 서버 응답을 기다리므로 여기서는 상태를 바꾸지 않음
     }
     // 그 외의 경우 (준비 단계에서 놓기)
     else if (!isGameActive && countdown === -1) {
@@ -274,29 +178,19 @@ export default function Game() {
     }
   };
 
+  // 터치 이벤트 최적화 함수들 추가
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.preventDefault(); // 기본 터치 동작 방지
+    handleButtonPress();
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.preventDefault(); // 기본 터치 동작 방지
+    handleButtonRelease();
+  };
+
   return (
     <div className="flex-container-mobile overflow-hidden">
-      <div className="p-4 bg-gray-800 flex-shrink-0 safe-top">
-        <div className="flex justify-between items-center">
-          <div>라운드 {currentRound}/19</div>
-          <div>승리: {wins}</div>
-        </div>
-        <div className="flex justify-between items-center mt-2">
-          <div className="text-sm text-yellow-400">
-            남은 시간: {formatTime(Math.max(0, remainingTime))}초
-          </div>
-          <div className={`text-xs px-2 py-1 rounded ${isTimeExhausted ? 'bg-red-600' : 'bg-green-600'}`}>
-            {isTimeExhausted ? '시간 소진' : '사용 가능'}
-          </div>
-        </div>
-        <div className="text-xs text-gray-300 mt-2">
-          Status: {gameStatus} | Socket: {socketConnected ? 'Connected' : 'Disconnected'} | Last: {lastEvent}
-        </div>
-        <div className="text-xs text-gray-300">
-          Participating: {isParticipating ? 'Yes' : 'No'} | Pressed: {isButtonPressed ? 'Yes' : 'No'}
-        </div>
-      </div>
-
       <div className="flex-main-mobile flex items-center justify-center p-4 safe-bottom touch-manipulation">
         {gameStatus!='roundEnd' && (
           <div className="text-center w-full">
@@ -318,23 +212,8 @@ export default function Game() {
               </div>
             )}
             
-            {/* 시간 소진으로 자동 포기된 경우 */}
-            {hasGivenUp && isGameActive && isTimeExhausted && (
-              <div className="space-y-4">
-                <div className="w-48 h-48 rounded-full bg-red-700 flex items-center justify-center mx-auto border-4 border-red-500">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-red-200">시간 소진</div>
-                    <div className="text-lg text-red-300">자동 포기</div>
-                  </div>
-                </div>
-                <div className="text-lg text-red-400">
-                  시간이 모두 소진되어 이번 라운드에서 자동으로 포기되었습니다
-                </div>
-              </div>
-            )}
-            
             {/* 일반적인 포기 상태 */}
-            {hasGivenUp && !(isGameActive && isTimeExhausted) && gameStatus !== 'configuring' && gameStatus !== 'waiting' && (
+            {hasGivenUp  && gameStatus !== 'configuring' && gameStatus !== 'waiting' && (
                 <button
                 disabled={true}
                 className={`w-72 h-72 md:w-[28rem] md:h-[28rem] rounded-full text-4xl font-bold ${
@@ -351,7 +230,21 @@ export default function Game() {
               </button>
             )}
             
-            {!hasGivenUp && gameStatus !== 'configuring' && gameStatus !== 'waiting' && gameStatus !== 'ended' && (
+            {/* 입찰 완료 상태 */}
+            {(hasBid) && (
+              <button
+              disabled={true}
+              className={`w-72 h-72 md:w-[28rem] md:h-[28rem] rounded-full text-4xl font-bold ${
+                  isButtonPressed && isParticipating
+                          ? 'bg-red-600 scale-95'
+                          : 'bg-gray-700 hover:bg-gray-600'
+              }`}
+              style={{ maxWidth: '90vw', maxHeight: '60vh' }}
+            >
+              </button>
+            )}
+            
+            {!hasGivenUp && !isBidding && gameStatus !== 'configuring' && gameStatus !== 'waiting' && gameStatus !== 'ended' && (
               <>
                 <div className="space-y-4">
                   {gameStatus=='prepare' && countdown === -1 && (
@@ -362,17 +255,21 @@ export default function Game() {
                   
                   <button
                     ref={buttonRef}
-                    onTouchStart={handleButtonPress}
-                    onTouchEnd={handleButtonRelease}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
                     onMouseDown={handleButtonPress}
                     onMouseUp={handleButtonRelease}
-                    className={`w-72 h-72 md:w-[28rem] md:h-[28rem] rounded-full text-4xl font-bold transition-all ${
+                    className={`w-80 h-80 md:w-[28rem] md:h-[28rem] rounded-full text-4xl font-bold transition-all ${
                         isButtonPressed && isParticipating
                             ? 'bg-red-600 scale-95'
                             : 'bg-gray-700 hover:bg-gray-600'
                     }`}
-                    style={{ maxWidth: '90vw', maxHeight: '60vh' }}
-                    disabled={hasGivenUp || (isTimeExhausted && isGameActive)}
+                    style={{ 
+                      maxWidth: '90vw', 
+                      maxHeight: '80vh',
+                      touchAction: 'none' // 터치 동작 완전 제어
+                    }}
+                    disabled={hasGivenUp || isBidding}
                   />
                 </div>
               </>
@@ -384,7 +281,6 @@ export default function Game() {
         <div className="text-center w-full">
             {roundResult.isDraw ? (
             <div className="space-y-4">
-                {/* 유찰 아이콘과 메시지 */}
                 <div className="text-6xl mb-4">
                     ⚖️
                 </div>
@@ -394,7 +290,6 @@ export default function Game() {
             </div>
             ) : (
             <div className="space-y-4">
-                {/* 낙찰 성공 */}
                 <h2 className="text-4xl font-bold mb-4">
                 {roundResult.winnerId === socket?.id 
                     ? '🎉 낙찰 성공!' 
@@ -410,7 +305,6 @@ export default function Game() {
             </div>
             )}
             
-            {/* 다음 라운드 대기 메시지 */}
             <div className="mt-8">
             <div className="text-lg text-yellow-400">
                 호스트가 다음 라운드를 시작하기를 기다리는 중...

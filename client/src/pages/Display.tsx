@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSocket } from '../contexts/SocketContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function Display() {
   const { socket } = useSocket();
+  const navigate = useNavigate();
   const [game, setGame] = useState<any>(null);
   const [players, setPlayers] = useState<any[]>([]);
   const [isHost, setIsHost] = useState(false);
@@ -13,7 +15,6 @@ export default function Display() {
   const [roundHistory, setRoundHistory] = useState<any[]>([]);
   const [playerBids, setPlayerBids] = useState<Map<string, number>>(new Map());
   const [showHistory, setShowHistory] = useState(false);
-  const [finalResults, setFinalResults] = useState<any>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
 
   // 정확한 시간 표시를 위한 헬퍼 함수
@@ -78,9 +79,9 @@ export default function Display() {
     });
 
     socket.on('game:ended', (results: any) => {
-      console.log('Game ended:', results);
-      setFinalResults(results);
-      setGameStatus('ended');
+      console.log('Game ended, redirecting to results:', results);
+      // 게임이 끝나면 Results 페이지로 리다이렉트
+      navigate('/results');
     });
 
     socket.on('player:gaveup', (player: any) => {
@@ -106,7 +107,7 @@ export default function Display() {
       socket.off('game:ended');
       socket.off('game:timeUpdate');
     };
-  }, [socket]);
+  }, [socket, navigate]);
 
   const nextRound = () => {
     if (!socket) return;
@@ -124,11 +125,6 @@ export default function Display() {
     socket.emit('game:start');
   };
 
-  const startGame = () => {
-    if (!socket || !isHost) return;
-    socket.emit('game:start');
-  };
-
   if (!game) {
     return (
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -136,8 +132,6 @@ export default function Display() {
       </div>
     );
   }
-
-  const allPlayersReady = players.length >= 2 && players.every(p => p.isReady);
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
@@ -188,7 +182,7 @@ export default function Display() {
       )}
 
       {/* 메인 게임 화면 */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
+      <div className="flex-1 flex flex-col items-center justify-center p-8 overflow-hidden">
         <div className="text-center">
           {gameStatus === 'configuring' && (
             <div className="space-y-6">
@@ -253,7 +247,7 @@ export default function Display() {
             </div>
           )}
 
-          {gameStatus !== 'configuring' && gameStatus !== 'waiting' && (
+          {['prepare', 'playing', 'roundEnd'].includes(gameStatus) && (
             <h1 className="text-6xl font-bold mb-8">라운드 {currentRound}</h1>
           )}
 
@@ -402,91 +396,6 @@ export default function Display() {
                   <div className="text-xl text-gray-400">
                     호스트가 다음 라운드를 시작하기를 기다리는 중...
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {gameStatus === 'ended' && finalResults && (
-            <div className="space-y-8">
-              <div className="text-6xl mb-4">🏆</div>
-              <div className="text-4xl mb-6">게임 종료!</div>
-              
-              {/* 최종 우승자 */}
-              <div className="bg-yellow-600 p-6 rounded-lg">
-                <h2 className="text-3xl font-bold mb-2">🥇 최종 우승자</h2>
-                <div className="text-2xl">{finalResults.winner.name}</div>
-                <div className="text-lg text-yellow-200">총 {finalResults.winner.wins}승</div>
-              </div>
-              
-              {/* 전체 순위 */}
-              <div className="bg-gray-800 p-6 rounded-lg">
-                <h3 className="text-2xl font-bold mb-4">최종 순위</h3>
-                <div className="space-y-3">
-                  {finalResults.allPlayers.map((player: any, index: number) => (
-                    <div 
-                      key={player.id} 
-                      className={`flex justify-between items-center p-3 rounded ${
-                        index === 0 ? 'bg-yellow-600' : 
-                        index === 1 ? 'bg-gray-600' : 
-                        index === 2 ? 'bg-amber-700' : 'bg-gray-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl font-bold">
-                          {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}
-                        </span>
-                        <span className="text-lg">{player.name}</span>
-                      </div>
-                      <span className="text-lg font-bold">{player.wins}승</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {/* 게임 통계 */}
-              <div className="bg-gray-800 p-6 rounded-lg">
-                <h3 className="text-2xl font-bold mb-4">게임 통계</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                  <div>
-                    <div className="text-2xl font-bold text-blue-400">{finalResults.rounds.length}</div>
-                    <div className="text-sm text-gray-400">총 라운드</div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-red-400">
-                      {finalResults.rounds.filter((r: any) => r.isDraw).length}
-                    </div>
-                    <div className="text-sm text-gray-400">유찰 라운드</div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-green-400">
-                      {finalResults.rounds.filter((r: any) => !r.isDraw).length}
-                    </div>
-                    <div className="text-sm text-gray-400">성공 라운드</div>
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold text-yellow-400">
-                      {finalResults.rounds.length > 0 && finalResults.rounds.some((r: any) => !r.isDraw) ? (
-                        (finalResults.rounds
-                          .filter((r: any) => !r.isDraw && r.winTime)
-                          .reduce((acc: number, r: any) => acc + (r.winTime || 0), 0) / 
-                         finalResults.rounds.filter((r: any) => !r.isDraw && r.winTime).length).toFixed(1)
-                      ) : '0.0'}초
-                    </div>
-                    <div className="text-sm text-gray-400">평균 입찰시간</div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* 새 게임 시작 버튼 (호스트만) */}
-              {isHost && (
-                <div className="mt-8">
-                  <button
-                    onClick={() => window.location.reload()}
-                    className="px-8 py-4 text-2xl font-bold bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
-                  >
-                    새 게임 시작
-                  </button>
                 </div>
               )}
             </div>

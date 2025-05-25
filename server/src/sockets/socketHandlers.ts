@@ -288,6 +288,14 @@ export function setupSocketHandlers(io: Server) {
       }
     });
 
+    socket.on('game:get_final_results', () => {
+      const game = gameStateService.getGame();
+      if (game) {
+        const finalResults = gameService.endGame(game);
+        io.to('global_game').emit('game:final_results', finalResults);
+      }
+    });
+
     // 연결 해제
     socket.on('disconnect', () => {
       console.log('플레이어 연결 해제:', socket.id);
@@ -420,15 +428,6 @@ export function setupSocketHandlers(io: Server) {
     // 서버에서만 라운드 상태 체크
     console.log('시간 추적 시작 (서버 전용)');
     timerService.startInterval('global_timer', updateTime, 100); // 100ms로 더 자주 업데이트
-  }
-
-  function nextRound(io: Server, game: any) {
-    if (game.gameState.currentRound < game.settings.totalRounds) {
-        startRound(io, game);
-      } else {
-        const finalResults = gameService.endGame(game);
-        io.to('global_game').emit('game:ended', finalResults);
-      }
   }
   
   // 라운드 시작
